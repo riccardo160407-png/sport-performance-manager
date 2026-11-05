@@ -14,14 +14,62 @@ from reportlab.lib.units import cm
 st.set_page_config(page_title="SPORT PERFORMANCE MANAGER", page_icon="🏅", layout="wide")
 st.markdown("""
 <style>
-.stApp{background:linear-gradient(135deg,#F7FBFF,#EAF3FC);color:#17324D}
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#123B66,#1976D2)}
-[data-testid="stSidebar"] *{color:white!important}
-h1,h2,h3{color:#123B66}
-.stButton>button,.stDownloadButton>button{background:#1976D2;color:white;border:0;border-radius:10px;font-weight:600}
-.stButton>button:hover{background:#125A9C;color:white}
-[data-testid="stMetric"]{background:white;border:1px solid #D6E6F5;padding:14px;border-radius:14px}
-div[data-testid="stForm"]{background:white;border:1px solid #D6E6F5;padding:16px;border-radius:14px}
+/* Palette SPM: bianco, navy, blu elettrico e nero */
+:root { color-scheme: light; }
+html, body, [data-testid="stAppViewContainer"], .stApp {
+  background: #F4F7FB !important;
+  color: #111827 !important;
+}
+[data-testid="stHeader"] { background: #F4F7FB !important; }
+[data-testid="stMain"] { background: #F4F7FB !important; }
+[data-testid="stMain"] * { color: #111827; }
+h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, [data-testid="stCaptionContainer"] {
+  color: #111827 !important;
+}
+h1 { color: #102A43 !important; font-weight: 800 !important; letter-spacing: -1px; }
+h2, h3 { color: #123B66 !important; font-weight: 750 !important; }
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg,#081A2D 0%,#123B66 65%,#174F85 100%) !important;
+  border-right: 1px solid #24496B;
+}
+[data-testid="stSidebar"] * { color: #FFFFFF !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] label { color:#FFFFFF !important; }
+[data-testid="stSidebar"] button { background:#174F85 !important; border:1px solid #4B7194 !important; }
+.stButton > button, .stDownloadButton > button, button[kind="primary"], [data-testid="stFormSubmitButton"] button {
+  background: #155EEF !important; color: #FFFFFF !important;
+  border: 1px solid #155EEF !important; border-radius: 10px !important;
+  font-weight: 700 !important; min-height: 2.7rem;
+}
+.stButton > button:hover, .stDownloadButton > button:hover {
+  background:#123B66 !important; border-color:#123B66 !important; color:#FFFFFF !important;
+}
+[data-testid="stMetric"] {
+  background:#FFFFFF !important; border:1px solid #D7E1EC !important;
+  padding:16px !important; border-radius:14px !important;
+  box-shadow:0 4px 14px rgba(16,42,67,.07);
+}
+[data-testid="stMetric"] label, [data-testid="stMetric"] [data-testid="stMetricValue"] {
+  color:#102A43 !important;
+}
+div[data-testid="stForm"], [data-testid="stExpander"] {
+  background:#FFFFFF !important; border:1px solid #D7E1EC !important;
+  border-radius:14px !important;
+}
+div[data-testid="stForm"] * { color:#111827 !important; }
+input, textarea, [data-baseweb="select"] > div {
+  background:#FFFFFF !important; color:#111827 !important;
+  border:1px solid #AAB9C9 !important; border-radius:8px !important;
+}
+input::placeholder, textarea::placeholder { color:#64748B !important; opacity:1 !important; }
+[data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid #CBD5E1; }
+[data-baseweb="tab"] { background:#E7EEF7 !important; border-radius:9px 9px 0 0 !important; }
+[data-baseweb="tab"] * { color:#102A43 !important; font-weight:700 !important; }
+[data-baseweb="tab"][aria-selected="true"] { background:#155EEF !important; }
+[data-baseweb="tab"][aria-selected="true"] * { color:#FFFFFF !important; }
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  background:#FFFFFF !important; border:1px solid #D7E1EC; border-radius:12px; overflow:hidden;
+}
+hr { border-color:#D7E1EC !important; }
 </style>
 """,unsafe_allow_html=True)
 DB="sport_performance.db"
