@@ -15,12 +15,14 @@ DB="sport_performance.db"
 def db():
     c=sqlite3.connect(DB); c.row_factory=sqlite3.Row
     c.executescript("""
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS athletes(id INTEGER PRIMARY KEY, first_name TEXT,last_name TEXT,birth TEXT,sex TEXT,weight REAL,height REAL,sport TEXT,team TEXT,hrmax REAL,hrrest REAL,ftp REAL,notes TEXT);
     CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,athlete_id INTEGER,filename TEXT,sport TEXT,activity_date TEXT,duration REAL,distance REAL,avg_hr REAL,max_hr REAL,avg_power REAL,max_power REAL,avg_speed REAL,cadence REAL,elevation REAL,data TEXT);
     CREATE TABLE IF NOT EXISTS garmin_connections(id INTEGER PRIMARY KEY,athlete_id INTEGER UNIQUE,status TEXT DEFAULT 'pending_consent',consent_at TEXT,last_sync TEXT,external_user_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS garmin_sync_events(id INTEGER PRIMARY KEY,athlete_id INTEGER,event_key TEXT UNIQUE,received_at TEXT DEFAULT CURRENT_TIMESTAMP,status TEXT,payload TEXT);
     """)
+    try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
     return c
 def pw_hash(p,s): return hashlib.pbkdf2_hmac("sha256",p.encode(),s.encode(),200000).hex()
 def q(sql,args=()): 
@@ -145,25 +147,74 @@ db().close()
 users=q("SELECT * FROM users")
 if "user" not in st.session_state:
     st.title("🏅 SPORT PERFORMANCE MANAGER")
-    if users.empty:
-        st.info("Prima configurazione: crea l'account allenatore.")
-        with st.form("setup"):
-            u=st.text_input("Nome utente"); p=st.text_input("Password (almeno 10 caratteri)",type="password"); p2=st.text_input("Ripeti password",type="password"); ok=st.form_submit_button("Crea account")
-        if ok:
-            if not u or len(p)<10 or p!=p2: st.error("Controlla i dati e la password.")
-            else:
-                s=secrets.token_hex(16)
-                with db() as c: c.execute("INSERT INTO users(username,pwd,salt,role) VALUES(?,?,?,?)",(u.lower(),pw_hash(p,s),s,"coach"))
-                st.success("Account creato. Ricarica la pagina per accedere.")
-    else:
-        with st.form("login"):
-            u=st.text_input("Nome utente"); p=st.text_input("Password",type="password"); ok=st.form_submit_button("Accedi")
-        if ok:
-            row=users[users.username==u.lower()]
-            if len(row) and secrets.compare_digest(pw_hash(p,row.iloc[0].salt),row.iloc[0].pwd): st.session_state.user=row.iloc[0].to_dict(); st.rerun()
-            else: st.error("Credenziali non valide.")
+    st.caption("Il tuo portale per allenamenti, atleti e performance")
+    coach_tab, athlete_tab = st.tabs(["👨‍🏫 Allenatore","🏃 Atleta"])
+    with coach_tab:
+        st.subheader("Area allenatore")
+        login_col, signup_col = st.columns(2)
+        with login_col:
+            st.markdown("**Accedi**")
+            with st.form("coach_login"):
+                cu=st.text_input("Username allenatore")
+                cp=st.text_input("Password",type="password")
+                coach_login=st.form_submit_button("Accedi come allenatore",use_container_width=True)
+            if coach_login:
+                row=users[(users.username==cu.strip().lower()) & (users.role=="coach")]
+                if len(row) and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
+                    st.session_state.user=row.iloc[0].to_dict(); st.rerun()
+                else: st.error("Credenziali allenatore non valide.")
+        with signup_col:
+            st.markdown("**Iscriviti**")
+            with st.form("coach_signup"):
+                nu=st.text_input("Crea username")
+                np=st.text_input("Crea password (almeno 12 caratteri)",type="password")
+                np2=st.text_input("Conferma password",type="password")
+                coach_signup=st.form_submit_button("Crea account allenatore",use_container_width=True)
+            if coach_signup:
+                if not nu.strip() or len(np)<12 or np!=np2:
+                    st.error("Inserisci uno username e due password uguali di almeno 12 caratteri.")
+                else:
+                    salt=secrets.token_hex(16)
+                    try:
+                        with db() as conn:
+                            conn.execute("INSERT INTO users(username,pwd,salt,role,athlete_id,must_change_password) VALUES(?,?,?,?,?,0)",(nu.strip().lower(),pw_hash(np,salt),salt,"coach",None))
+                        st.success("Account allenatore creato. Ora puoi accedere.")
+                    except sqlite3.IntegrityError:
+                        st.error("Username già utilizzato. Scegline un altro.")
+    with athlete_tab:
+        st.subheader("Area atleta")
+        st.info("L'allenatore crea il tuo profilo e ti consegna username e password provvisoria. Al primo accesso dovrai scegliere una password personale.")
+        with st.form("athlete_login"):
+            au=st.text_input("Username atleta (nome.cognome)")
+            ap=st.text_input("Password provvisoria o personale",type="password")
+            athlete_login=st.form_submit_button("Accedi come atleta",use_container_width=True)
+        if athlete_login:
+            row=users[(users.username==au.strip().lower()) & (users.role=="athlete")]
+            if len(row) and secrets.compare_digest(pw_hash(ap,row.iloc[0].salt),row.iloc[0].pwd):
+                st.session_state.user=row.iloc[0].to_dict(); st.rerun()
+            else: st.error("Credenziali atleta non valide. Chiedi all'allenatore di verificare il tuo account.")
     st.stop()
 user=st.session_state.user
+if int(user.get("must_change_password") or 0)==1:
+    st.title("Primo accesso · crea la tua password")
+    st.info("La password provvisoria deve essere sostituita con una password personale di almeno 12 caratteri.")
+    with st.form("force_password_change"):
+        p1=st.text_input("Nuova password",type="password")
+        p2=st.text_input("Ripeti nuova password",type="password")
+        save=st.form_submit_button("Salva nuova password")
+    if save:
+        if len(p1)<12 or p1!=p2:
+            st.error("Le password devono coincidere e contenere almeno 12 caratteri.")
+        else:
+            salt=secrets.token_hex(16)
+            with db() as conn:
+                conn.execute("UPDATE users SET pwd=?,salt=?,must_change_password=0 WHERE id=?",(pw_hash(p1,salt),salt,user["id"]))
+            st.session_state.user["pwd"]=pw_hash(p1,salt)
+            st.session_state.user["salt"]=salt
+            st.session_state.user["must_change_password"]=0
+            st.success("Password aggiornata.")
+            st.rerun()
+    st.stop()
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
