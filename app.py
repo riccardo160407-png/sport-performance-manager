@@ -107,7 +107,7 @@ if page=="Dashboard":
 elif page=="Atleti":
     st.title("Anagrafica atleti")
     with st.form("ath"):
-        a,b,c=st.columns(3); fn=a.text_input("Nome*"); ln=b.text_input("Cognome*"); birth=c.date_input("Data nascita",value=None)
+        a,b,c=st.columns(3); fn=a.text_input("Nome*"); ln=b.text_input("Cognome*"); birth=c.date_input("Data nascita",value=None,min_value=date(1950,1,1),max_value=date.today())
         a,b,c=st.columns(3); sex=a.selectbox("Sesso",["Non specificato","F","M","Altro"]); weight=b.number_input("Peso kg",0.,250.); height=c.number_input("Altezza cm",0.,250.)
         a,b,c=st.columns(3); sport=a.selectbox("Sport",["Ciclismo","Corsa","Pattinaggio","Palestra","Triathlon","Nuoto","Altro"]); team=b.text_input("Società"); ftp=c.number_input("FTP W",0.,2000.)
         a,b=st.columns(2); hrmax=a.number_input("FC max",0,250); hrrest=b.number_input("FC riposo",0,150); notes=st.text_area("Note")
