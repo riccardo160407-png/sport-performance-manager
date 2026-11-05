@@ -88,6 +88,7 @@ def db():
     c.executescript("""
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0, email TEXT);
     CREATE TABLE IF NOT EXISTS coach_verifications(email TEXT PRIMARY KEY, username TEXT NOT NULL, pwd TEXT NOT NULL, salt TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS pending_email_changes(user_id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS athletes(id INTEGER PRIMARY KEY, first_name TEXT,last_name TEXT,birth TEXT,sex TEXT,weight REAL,height REAL,sport TEXT,team TEXT,hrmax REAL,hrrest REAL,ftp REAL,notes TEXT);
     CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,athlete_id INTEGER,filename TEXT,sport TEXT,activity_date TEXT,duration REAL,distance REAL,avg_hr REAL,max_hr REAL,avg_power REAL,max_power REAL,avg_speed REAL,cadence REAL,elevation REAL,data TEXT);
     CREATE TABLE IF NOT EXISTS garmin_connections(id INTEGER PRIMARY KEY,athlete_id INTEGER UNIQUE,status TEXT DEFAULT 'pending_consent',consent_at TEXT,last_sync TEXT,external_user_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -110,6 +111,44 @@ def send_coach_code(to_email, code):
     msg.set_content(f"Il codice di verifica è {code}. Scade tra 10 minuti.")
     with smtplib.SMTP(cfg["host"],int(cfg["port"]),timeout=20) as server:
         server.starttls(); server.login(cfg["username"],cfg["password"]); server.send_message(msg)
+
+def render_profile_email(user):
+    st.markdown("### Verifica della nuova email")
+    st.caption("La nuova email viene salvata solo dopo la verifica del codice.")
+    proposed=st.text_input("Nuovo indirizzo email",value=user.get("email") or "",key="profile_new_email",placeholder="nome@esempio.it")
+    if st.button("Cambia mail",key="send_profile_email_code",use_container_width=True):
+        address=proposed.strip().lower()
+        if not address or "@" not in address or "." not in address.split("@")[-1] or any(ch.isspace() for ch in address):
+            st.error("Inserisci un indirizzo email valido.")
+        elif address == (user.get("email") or "").strip().lower():
+            st.info("Questa è già la tua email attuale.")
+        else:
+            try:
+                code=f"{secrets.randbelow(1000000):06d}"
+                send_coach_code(address,code)
+                with db() as conn:
+                    conn.execute("DELETE FROM pending_email_changes WHERE email=? AND user_id<>?",(address,user["id"]))
+                    conn.execute("INSERT OR REPLACE INTO pending_email_changes(user_id,email,code_hash,expires_at) VALUES(?,?,?,?)",(user["id"],address,pw_hash(code,"spm-profile-email"),(datetime.utcnow()+timedelta(minutes=10)).isoformat()))
+                st.session_state.profile_email_pending=True
+                st.success("Codice inviato al nuovo indirizzo. Controlla anche lo spam: scade tra 10 minuti.")
+            except Exception as e:
+                st.error(f"Invio non riuscito: {e}")
+    if st.session_state.get("profile_email_pending"):
+        with st.form("verify_profile_email_form"):
+            code_input=st.text_input("Codice ricevuto sulla nuova email",max_chars=6)
+            verify_email=st.form_submit_button("Verifica mail nuova",use_container_width=True)
+        if verify_email:
+            with db() as conn:
+                pending=conn.execute("SELECT * FROM pending_email_changes WHERE user_id=?",(user["id"],)).fetchone()
+                if pending and datetime.fromisoformat(pending["expires_at"])>datetime.utcnow() and secrets.compare_digest(pw_hash(code_input,"spm-profile-email"),pending["code_hash"]):
+                    conn.execute("UPDATE users SET email=? WHERE id=?",(pending["email"],user["id"]))
+                    conn.execute("DELETE FROM pending_email_changes WHERE user_id=?",(user["id"],))
+                    st.session_state.user["email"]=pending["email"]
+                    st.session_state.pop("profile_email_pending",None)
+                    st.success("Nuova email verificata e salvata.")
+                    st.rerun()
+                else:
+                    st.error("Codice errato o scaduto. Premi Cambia mail per richiederne uno nuovo.")
 
 def q(sql,args=()): 
     with db() as c: return pd.read_sql_query(sql,c,params=args)
@@ -339,29 +378,26 @@ if user["role"]=="athlete":
         c2.metric("Società",athlete.team or "Non indicata")
         c3.metric("Username",user["username"])
         st.divider()
+        st.markdown("**Dati account**")
+        st.write("Email attuale:", user.get("email") or "Non impostata")
         with st.form("profile_settings"):
-            st.markdown("**Dati account**")
-            email=st.text_input("Email",value=user.get("email") or "",placeholder="nome@esempio.it")
             st.markdown("**Modifica password**")
             new_password=st.text_input("Nuova password (lascia vuoto per non modificarla)",type="password")
             confirm_password=st.text_input("Conferma nuova password",type="password")
             save_profile=st.form_submit_button("Salva modifiche",use_container_width=True)
         if save_profile:
-            email_value=email.strip().lower()
-            if email_value and ("@" not in email_value or "." not in email_value.split("@")[-1] or any(ch.isspace() for ch in email_value)):
-                st.error("Inserisci un indirizzo email valido.")
-            elif bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
+            if bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
                 st.error("Per cambiare password inserisci due valori uguali di almeno 12 caratteri.")
             else:
-                with db() as conn:
-                    if new_password:
-                        salt=secrets.token_hex(16)
-                        conn.execute("UPDATE users SET email=?,pwd=?,salt=? WHERE id=?",(email_value or None,pw_hash(new_password,salt),salt,user["id"]))
-                    else:
-                        conn.execute("UPDATE users SET email=? WHERE id=?",(email_value or None,user["id"]))
-                st.session_state.user["email"]=email_value or None
-                st.success("Profilo aggiornato.")
+                if new_password:
+                    salt=secrets.token_hex(16)
+                    with db() as conn:
+                        conn.execute("UPDATE users SET pwd=?,salt=? WHERE id=?",(pw_hash(new_password,salt),salt,user["id"]))
+                    st.session_state.user["pwd"]=pw_hash(new_password,salt)
+                    st.session_state.user["salt"]=salt
+                st.success("Password aggiornata." if new_password else "Nessuna modifica alla password.")
                 st.rerun()
+        render_profile_email(user)
         st.info("I dati sportivi e anagrafici sono gestiti dall'allenatore.")
         st.stop()
     acts=q("SELECT * FROM activities WHERE athlete_id=? ORDER BY activity_date DESC",(aid,))
@@ -529,25 +565,22 @@ elif page=="Profilo":
     st.caption("Gestisci i dati del tuo account e le credenziali di accesso.")
     st.metric("Username",user["username"])
     st.divider()
+    st.write("Email attuale:", user.get("email") or "Non impostata")
     with st.form("profile_settings"):
-        email=st.text_input("Email",value=user.get("email") or "",placeholder="nome@esempio.it")
         st.markdown("**Modifica password**")
         new_password=st.text_input("Nuova password (lascia vuoto per non modificarla)",type="password")
         confirm_password=st.text_input("Conferma nuova password",type="password")
         save_profile=st.form_submit_button("Salva modifiche",use_container_width=True)
     if save_profile:
-        email_value=email.strip().lower()
-        if email_value and ("@" not in email_value or "." not in email_value.split("@")[-1] or any(ch.isspace() for ch in email_value)):
-            st.error("Inserisci un indirizzo email valido.")
-        elif bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
+        if bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
             st.error("Per cambiare password inserisci due valori uguali di almeno 12 caratteri.")
         else:
-            with db() as conn:
-                if new_password:
-                    salt=secrets.token_hex(16)
-                    conn.execute("UPDATE users SET email=?,pwd=?,salt=? WHERE id=?",(email_value or None,pw_hash(new_password,salt),salt,user["id"]))
-                else:
-                    conn.execute("UPDATE users SET email=? WHERE id=?",(email_value or None,user["id"]))
-            st.session_state.user["email"]=email_value or None
-            st.success("Profilo aggiornato.")
+            if new_password:
+                salt=secrets.token_hex(16)
+                with db() as conn:
+                    conn.execute("UPDATE users SET pwd=?,salt=? WHERE id=?",(pw_hash(new_password,salt),salt,user["id"]))
+                st.session_state.user["pwd"]=pw_hash(new_password,salt)
+                st.session_state.user["salt"]=salt
+            st.success("Password aggiornata." if new_password else "Nessuna modifica alla password.")
             st.rerun()
+    render_profile_email(user)
