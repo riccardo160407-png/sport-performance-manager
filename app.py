@@ -167,7 +167,7 @@ user=st.session_state.user
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
-    menu=["Dashboard","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività"]
+    menu=["Dashboard","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività"]
     page=st.radio("Menu",menu)
 if user["role"]=="athlete":
     aid=user["athlete_id"]
@@ -180,6 +180,55 @@ if page=="Dashboard":
     aa=q("SELECT * FROM athletes"); acts=q("SELECT a.*,t.first_name||' '||t.last_name atleta FROM activities a JOIN athletes t ON t.id=a.athlete_id")
     st.title("Dashboard allenatore"); x,y,z=st.columns(3); x.metric("Atleti",len(aa)); y.metric("Attività",len(acts)); z.metric("Sport",aa.sport.nunique() if len(aa) else 0)
     st.dataframe(acts.drop(columns=["data"],errors="ignore"),use_container_width=True)
+elif page=="Riepilogo mensile":
+    st.title("Riepilogo mensile")
+    st.caption("Volume di allenamento per atleta e disciplina, aggiornato con tutte le attività caricate")
+    d=q("SELECT a.*,t.first_name||' '||t.last_name atleta FROM activities a JOIN athletes t ON t.id=a.athlete_id")
+    if d.empty:
+        st.info("Non ci sono ancora attività. Carica un file o collega Garmin quando l'integrazione sarà attiva.")
+    else:
+        d["data_dt"]=pd.to_datetime(d["activity_date"],errors="coerce")
+        d=d.dropna(subset=["data_dt"]).copy()
+        d["mese"]=d["data_dt"].dt.strftime("%Y-%m")
+        months=sorted(d["mese"].dropna().unique(),reverse=True)
+        month=st.selectbox("Mese",months,index=0)
+        athletes=["Tutti gli atleti"]+sorted(d["atleta"].dropna().unique().tolist())
+        who=st.selectbox("Atleta",athletes)
+        v=d[d["mese"]==month].copy()
+        if who!="Tutti gli atleti": v=v[v["atleta"]==who]
+        def disciplina(x):
+            s=str(x).strip().lower()
+            if "patt" in s or "skate" in s: return "Pattinaggio"
+            if "corr" in s or "run" in s: return "Corsa"
+            if "cicl" in s or "bik" in s or "cycling" in s: return "Bici"
+            if "pales" in s or "gym" in s or "strength" in s: return "Palestra"
+            if "nuot" in s or "swim" in s: return "Nuoto"
+            if "triathlon" in s: return "Triathlon"
+            return str(x).strip() or "Altro"
+        v["disciplina"]=v["sport"].apply(disciplina)
+        for col in ["distance","duration","elevation","avg_hr","avg_power"]:
+            if col in v: v[col]=pd.to_numeric(v[col],errors="coerce")
+        v["km"]=v["distance"].clip(lower=0)/1000
+        v["ore"]=v["duration"].clip(lower=0)/3600
+        total_km=v["km"].sum(min_count=1)
+        total_h=v["ore"].sum(min_count=1)
+        total_elev=v["elevation"].clip(lower=0).sum(min_count=1)
+        m1,m2,m3,m4=st.columns(4)
+        m1.metric("Attività",len(v))
+        m2.metric("Distanza",f"{total_km:,.1f} km".replace(",", "X").replace(".", ",").replace("X",".") if pd.notna(total_km) else "N/D")
+        m3.metric("Tempo",f"{total_h:,.1f} h".replace(",", "X").replace(".", ",").replace("X",".") if pd.notna(total_h) else "N/D")
+        m4.metric("Dislivello positivo",f"{total_elev:,.0f} m".replace(",", ".") if pd.notna(total_elev) else "N/D")
+        st.subheader("Volume per disciplina")
+        agg=v.groupby("disciplina",dropna=False).agg(Attivita=("id","count"),Chilometri=("km","sum"),Ore=("ore","sum"),Dislivello_m=("elevation","sum"),FC_media=("avg_hr","mean"),Potenza_media=("avg_power","mean")).reset_index()
+        agg=agg.rename(columns={"disciplina":"Disciplina","Dislivello_m":"Dislivello (m)","FC_media":"FC media (bpm)","Potenza_media":"Potenza media (W)"})
+        st.dataframe(agg.round(1),use_container_width=True,hide_index=True)
+        if len(agg):
+            st.plotly_chart(px.bar(agg,x="Disciplina",y="Chilometri",color="Disciplina",title="Chilometri mensili per disciplina",text_auto=".1f"),use_container_width=True)
+        st.subheader("Riepilogo per atleta")
+        by_ath=v.groupby("atleta").agg(Attivita=("id","count"),Chilometri=("km","sum"),Ore=("ore","sum"),Dislivello_m=("elevation","sum")).reset_index().sort_values("Chilometri",ascending=False)
+        st.dataframe(by_ath.round(1),use_container_width=True,hide_index=True)
+        st.subheader("Dettaglio attività del mese")
+        st.dataframe(v[["data_dt","atleta","sport","filename","km","ore","avg_hr","avg_power","elevation"]].rename(columns={"data_dt":"Data","atleta":"Atleta","sport":"Sport","filename":"File","km":"Km","ore":"Ore","avg_hr":"FC media","avg_power":"Potenza media","elevation":"Dislivello m"}).round(2),use_container_width=True,hide_index=True)
 elif page=="Atleti":
     st.title("Anagrafica atleti")
     with st.form("ath"):
