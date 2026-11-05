@@ -93,6 +93,9 @@ def db():
     CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,athlete_id INTEGER,filename TEXT,sport TEXT,activity_date TEXT,duration REAL,distance REAL,avg_hr REAL,max_hr REAL,avg_power REAL,max_power REAL,avg_speed REAL,cadence REAL,elevation REAL,data TEXT);
     CREATE TABLE IF NOT EXISTS garmin_connections(id INTEGER PRIMARY KEY,athlete_id INTEGER UNIQUE,status TEXT DEFAULT 'pending_consent',consent_at TEXT,last_sync TEXT,external_user_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS garmin_sync_events(id INTEGER PRIMARY KEY,athlete_id INTEGER,event_key TEXT UNIQUE,received_at TEXT DEFAULT CURRENT_TIMESTAMP,status TEXT,payload TEXT);
+
+    CREATE TABLE IF NOT EXISTS training_events(id INTEGER PRIMARY KEY, title TEXT NOT NULL, event_type TEXT NOT NULL DEFAULT 'Allenamento', event_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, notes TEXT, amount REAL, created_by INTEGER);
+    CREATE TABLE IF NOT EXISTS event_attendance(id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL, athlete_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'Da segnare', UNIQUE(event_id,athlete_id));
     """)
     try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
@@ -362,7 +365,7 @@ if int(user.get("must_change_password") or 0)==1:
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
-    menu=["Dashboard","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup","Profilo"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività","Profilo"]
+    menu=["Dashboard","Calendario","Registro presenze","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup","Profilo"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività","Calendario","Registro presenze","Profilo"]
     page=st.radio("NAVIGAZIONE",menu)
 if user["role"]=="athlete":
     aid=user["athlete_id"]
