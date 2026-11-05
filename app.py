@@ -14,62 +14,71 @@ from reportlab.lib.units import cm
 st.set_page_config(page_title="SPORT PERFORMANCE MANAGER", page_icon="🏅", layout="wide")
 st.markdown("""
 <style>
-/* Palette SPM: bianco, navy, blu elettrico e nero */
 :root { color-scheme: light; }
-html, body, [data-testid="stAppViewContainer"], .stApp {
-  background: #F4F7FB !important;
-  color: #111827 !important;
+html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stMain"] {
+  background:#F7FAFF !important; color:#101828 !important;
 }
-[data-testid="stHeader"] { background: #F4F7FB !important; }
-[data-testid="stMain"] { background: #F4F7FB !important; }
-[data-testid="stMain"] * { color: #111827; }
-h1, h2, h3, h4, h5, h6, p, label, .stMarkdown, [data-testid="stCaptionContainer"] {
-  color: #111827 !important;
-}
-h1 { color: #102A43 !important; font-weight: 800 !important; letter-spacing: -1px; }
-h2, h3 { color: #123B66 !important; font-weight: 750 !important; }
+[data-testid="stHeader"] { background:#F7FAFF !important; }
+[data-testid="stMain"] * { color:#101828; }
+h1,h2,h3,h4,h5,h6,p,label,.stMarkdown,[data-testid="stCaptionContainer"] { color:#101828 !important; }
+h1 { color:#102A43 !important; font-weight:800 !important; letter-spacing:-.7px; }
+h2,h3 { color:#123B66 !important; font-weight:750 !important; }
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg,#081A2D 0%,#123B66 65%,#174F85 100%) !important;
-  border-right: 1px solid #24496B;
+  background:linear-gradient(180deg,#0B1F33 0%,#123B66 100%) !important;
+  border-right:1px solid #24496B; padding-top:1rem;
 }
-[data-testid="stSidebar"] * { color: #FFFFFF !important; }
-[data-testid="stSidebar"] [data-testid="stRadio"] label { color:#FFFFFF !important; }
-[data-testid="stSidebar"] button { background:#174F85 !important; border:1px solid #4B7194 !important; }
-.stButton > button, .stDownloadButton > button, button[kind="primary"], [data-testid="stFormSubmitButton"] button {
-  background: #155EEF !important; color: #FFFFFF !important;
-  border: 1px solid #155EEF !important; border-radius: 10px !important;
-  font-weight: 700 !important; min-height: 2.7rem;
+[data-testid="stSidebar"] * { color:#FFFFFF !important; }
+[data-testid="stSidebar"] [data-testid="stRadio"] > label {
+  color:#BFD7F2 !important; font-size:.78rem; font-weight:800;
+  text-transform:uppercase; letter-spacing:1px;
 }
-.stButton > button:hover, .stDownloadButton > button:hover {
+[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] { gap:7px; }
+[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.10);
+  border-radius:11px; padding:9px 12px; transition:all .15s ease;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover {
+  background:rgba(255,255,255,.15); border-color:#69A7FF;
+}
+[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+  background:#155EEF; border:1px solid #8AB4FF; box-shadow:0 3px 12px rgba(0,0,0,.18);
+}
+[data-testid="stSidebar"] button {
+  background:#173F68 !important; border:1px solid #557A9E !important;
+  border-radius:10px !important;
+}
+.stButton > button,.stDownloadButton > button,button[kind="primary"],[data-testid="stFormSubmitButton"] button {
+  background:#155EEF !important; color:#FFFFFF !important; border:1px solid #155EEF !important;
+  border-radius:10px !important; font-weight:700 !important; min-height:2.65rem;
+}
+.stButton > button:hover,.stDownloadButton > button:hover {
   background:#123B66 !important; border-color:#123B66 !important; color:#FFFFFF !important;
 }
 [data-testid="stMetric"] {
-  background:#FFFFFF !important; border:1px solid #D7E1EC !important;
+  background:#FFFFFF !important; border:1px solid #D7E3F0 !important;
   padding:16px !important; border-radius:14px !important;
-  box-shadow:0 4px 14px rgba(16,42,67,.07);
+  box-shadow:0 4px 14px rgba(16,42,67,.06);
 }
-[data-testid="stMetric"] label, [data-testid="stMetric"] [data-testid="stMetricValue"] {
-  color:#102A43 !important;
+[data-testid="stMetric"] label,[data-testid="stMetric"] [data-testid="stMetricValue"] { color:#102A43 !important; }
+div[data-testid="stForm"],[data-testid="stExpander"] {
+  background:#FFFFFF !important; border:1px solid #D7E3F0 !important; border-radius:14px !important;
 }
-div[data-testid="stForm"], [data-testid="stExpander"] {
-  background:#FFFFFF !important; border:1px solid #D7E1EC !important;
-  border-radius:14px !important;
+div[data-testid="stForm"] * { color:#101828 !important; }
+input,textarea,[data-baseweb="select"] > div {
+  background:#FFFFFF !important; color:#101828 !important;
+  border:1px solid #AABBD0 !important; border-radius:9px !important;
 }
-div[data-testid="stForm"] * { color:#111827 !important; }
-input, textarea, [data-baseweb="select"] > div {
-  background:#FFFFFF !important; color:#111827 !important;
-  border:1px solid #AAB9C9 !important; border-radius:8px !important;
-}
-input::placeholder, textarea::placeholder { color:#64748B !important; opacity:1 !important; }
+input::placeholder,textarea::placeholder { color:#667085 !important; opacity:1 !important; }
 [data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid #CBD5E1; }
-[data-baseweb="tab"] { background:#E7EEF7 !important; border-radius:9px 9px 0 0 !important; }
+[data-baseweb="tab"] { background:#EAF1FA !important; border-radius:9px 9px 0 0 !important; }
 [data-baseweb="tab"] * { color:#102A43 !important; font-weight:700 !important; }
 [data-baseweb="tab"][aria-selected="true"] { background:#155EEF !important; }
 [data-baseweb="tab"][aria-selected="true"] * { color:#FFFFFF !important; }
-[data-testid="stDataFrame"], [data-testid="stTable"] {
-  background:#FFFFFF !important; border:1px solid #D7E1EC; border-radius:12px; overflow:hidden;
+[data-testid="stDataFrame"],[data-testid="stTable"] {
+  background:#FFFFFF !important; border:1px solid #D7E3F0; border-radius:12px; overflow:hidden;
 }
-hr { border-color:#D7E1EC !important; }
+[data-testid="stAlert"] { border-radius:12px !important; }
+hr { border-color:#D7E3F0 !important; }
 </style>
 """,unsafe_allow_html=True)
 DB="sport_performance.db"
@@ -314,12 +323,47 @@ if int(user.get("must_change_password") or 0)==1:
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
-    menu=["Dashboard","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività"]
-    page=st.radio("Menu",menu)
+    menu=["Dashboard","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup","Profilo"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività","Profilo"]
+    page=st.radio("NAVIGAZIONE",menu)
 if user["role"]=="athlete":
     aid=user["athlete_id"]
     a=q("SELECT * FROM athletes WHERE id=?",(aid,))
     if a.empty: st.error("Profilo non associato."); st.stop()
+    if page=="Profilo":
+        st.title("Il mio profilo")
+        athlete=a.iloc[0]
+        st.subheader(f"{athlete.first_name} {athlete.last_name}")
+        st.caption("Dati anagrafici e impostazioni di accesso")
+        c1,c2,c3=st.columns(3)
+        c1.metric("Sport",athlete.sport or "Non indicato")
+        c2.metric("Società",athlete.team or "Non indicata")
+        c3.metric("Username",user["username"])
+        st.divider()
+        with st.form("profile_settings"):
+            st.markdown("**Dati account**")
+            email=st.text_input("Email",value=user.get("email") or "",placeholder="nome@esempio.it")
+            st.markdown("**Modifica password**")
+            new_password=st.text_input("Nuova password (lascia vuoto per non modificarla)",type="password")
+            confirm_password=st.text_input("Conferma nuova password",type="password")
+            save_profile=st.form_submit_button("Salva modifiche",use_container_width=True)
+        if save_profile:
+            email_value=email.strip().lower()
+            if email_value and ("@" not in email_value or "." not in email_value.split("@")[-1] or any(ch.isspace() for ch in email_value)):
+                st.error("Inserisci un indirizzo email valido.")
+            elif bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
+                st.error("Per cambiare password inserisci due valori uguali di almeno 12 caratteri.")
+            else:
+                with db() as conn:
+                    if new_password:
+                        salt=secrets.token_hex(16)
+                        conn.execute("UPDATE users SET email=?,pwd=?,salt=? WHERE id=?",(email_value or None,pw_hash(new_password,salt),salt,user["id"]))
+                    else:
+                        conn.execute("UPDATE users SET email=? WHERE id=?",(email_value or None,user["id"]))
+                st.session_state.user["email"]=email_value or None
+                st.success("Profilo aggiornato.")
+                st.rerun()
+        st.info("I dati sportivi e anagrafici sono gestiti dall'allenatore.")
+        st.stop()
     acts=q("SELECT * FROM activities WHERE athlete_id=? ORDER BY activity_date DESC",(aid,))
     st.title("La mia dashboard" if page=="La mia dashboard" else "Le mie attività")
     st.metric("Attività registrate",len(acts)); st.dataframe(acts.drop(columns=["data"],errors="ignore"),use_container_width=True); st.stop()
@@ -480,3 +524,30 @@ elif page=="Backup":
     st.title("Backup database"); st.warning("Questa versione usa SQLite locale: non pubblicarla con dati reali di atleti. Il database può andare perso su hosting con storage temporaneo.")
     import os
     if os.path.exists(DB): st.download_button("Scarica backup SQLite",open(DB,"rb").read(),file_name=DB)
+elif page=="Profilo":
+    st.title("Profilo allenatore")
+    st.caption("Gestisci i dati del tuo account e le credenziali di accesso.")
+    st.metric("Username",user["username"])
+    st.divider()
+    with st.form("profile_settings"):
+        email=st.text_input("Email",value=user.get("email") or "",placeholder="nome@esempio.it")
+        st.markdown("**Modifica password**")
+        new_password=st.text_input("Nuova password (lascia vuoto per non modificarla)",type="password")
+        confirm_password=st.text_input("Conferma nuova password",type="password")
+        save_profile=st.form_submit_button("Salva modifiche",use_container_width=True)
+    if save_profile:
+        email_value=email.strip().lower()
+        if email_value and ("@" not in email_value or "." not in email_value.split("@")[-1] or any(ch.isspace() for ch in email_value)):
+            st.error("Inserisci un indirizzo email valido.")
+        elif bool(new_password) != bool(confirm_password) or (new_password and (len(new_password)<12 or new_password!=confirm_password)):
+            st.error("Per cambiare password inserisci due valori uguali di almeno 12 caratteri.")
+        else:
+            with db() as conn:
+                if new_password:
+                    salt=secrets.token_hex(16)
+                    conn.execute("UPDATE users SET email=?,pwd=?,salt=? WHERE id=?",(email_value or None,pw_hash(new_password,salt),salt,user["id"]))
+                else:
+                    conn.execute("UPDATE users SET email=? WHERE id=?",(email_value or None,user["id"]))
+            st.session_state.user["email"]=email_value or None
+            st.success("Profilo aggiornato.")
+            st.rerun()
