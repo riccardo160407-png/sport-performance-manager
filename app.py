@@ -3,6 +3,7 @@ import sqlite3, hashlib, secrets, io, json, smtplib, re
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 from datetime import date
+from zoneinfo import ZoneInfo
 import pandas as pd
 import plotly.express as px
 from reportlab.lib.pagesizes import A4
@@ -96,6 +97,10 @@ def db():
 
     CREATE TABLE IF NOT EXISTS training_events(id INTEGER PRIMARY KEY, title TEXT NOT NULL, event_type TEXT NOT NULL DEFAULT 'Allenamento', event_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, notes TEXT, amount REAL, created_by INTEGER);
     CREATE TABLE IF NOT EXISTS event_attendance(id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL, athlete_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'Da segnare', UNIQUE(event_id,athlete_id));
+    try: c.execute("ALTER TABLE training_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'Allenamento'")
+    except sqlite3.OperationalError: pass
+    try: c.execute("ALTER TABLE training_events ADD COLUMN amount REAL")
+    except sqlite3.OperationalError: pass
     """)
     try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
@@ -403,10 +408,165 @@ if user["role"]=="athlete":
         render_profile_email(user)
         st.info("I dati sportivi e anagrafici sono gestiti dall'allenatore.")
         st.stop()
+    if page=="Calendario":
+        st.title("Il mio calendario")
+        events=q("SELECT e.*,COALESCE(a.status,'') AS presenza FROM training_events e JOIN event_attendance a ON a.event_id=e.id WHERE a.athlete_id=? ORDER BY e.event_date,e.start_time,e.id",(aid,))
+        if events.empty:
+            st.info("Non hai ancora eventi assegnati dall'allenatore.")
+        else:
+            events["event_date"]=pd.to_datetime(events["event_date"],errors="coerce").dt.date
+            selected_day=st.date_input("Seleziona giorno",value=date.today(),key="athlete_calendar_day")
+            daily=events[events["event_date"]==selected_day]
+            st.subheader(selected_day.strftime("%A %d/%m/%Y"))
+            if daily.empty: st.caption("Nessun evento assegnato in questa data.")
+            for _,ev in daily.iterrows():
+                with st.container(border=True):
+                    st.markdown("**"+str(ev["event_type"])+" · "+str(ev["title"])+"**")
+                    if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
+                    if ev["location"]: st.write("Luogo: "+str(ev["location"]))
+                    if pd.notna(ev["amount"]) and ev["amount"] is not None: st.write("Da pagare: € "+format(float(ev["amount"]),".2f"))
+                    if ev["event_type"] in ["Allenamento","Gara"]:
+                        status=str(ev["presenza"] or "Da segnare")
+                        if status=="Assente": st.error("Assenza registrata")
+                        elif status=="Presente": st.success("Presenza registrata")
+                        elif status=="In ritardo": st.warning("Presenza registrata · in ritardo")
+                        elif status=="Giustificato": st.info("Assenza giustificata")
+                        else: st.caption("Presenza non ancora registrata")
+                    if ev["notes"]: st.write(str(ev["notes"]))
+            with st.expander("Tutti i miei eventi"):
+                st.dataframe(events.drop(columns=["id","created_by"],errors="ignore"),use_container_width=True,hide_index=True)
+        st.stop()
+    if page=="Registro presenze":
+        st.title("Il mio registro presenze")
+        st.caption("Riepilogo delle presenze e delle assenze registrate dall'allenatore.")
+        mode=st.radio("Periodo",["Settimana","Mese","Anno"],horizontal=True,key="ath_att_period")
+        ref=st.date_input("Data di riferimento",value=date.today(),key="ath_att_ref")
+        if mode=="Settimana":
+            first=ref-timedelta(days=ref.weekday()); last=first+timedelta(days=6)
+        elif mode=="Mese":
+            first=ref.replace(day=1); last=(first+timedelta(days=32)).replace(day=1)-timedelta(days=1)
+        else:
+            first=date(ref.year,1,1); last=date(ref.year,12,31)
+        data=q("SELECT e.event_date AS Data,e.start_time AS Ora,e.title AS Evento,a.status AS Esito FROM event_attendance a JOIN training_events e ON e.id=a.event_id WHERE a.athlete_id=? AND e.event_type IN ('Allenamento','Gara') AND e.event_date BETWEEN ? AND ? ORDER BY e.event_date DESC,e.start_time DESC",(aid,first.isoformat(),last.isoformat()))
+        present=int(data["Esito"].isin(["Presente","In ritardo"]).sum()) if not data.empty else 0
+        absent=int(data["Esito"].isin(["Assente","Giustificato"]).sum()) if not data.empty else 0
+        c1,c2,c3=st.columns(3); c1.metric("Presenze",present); c2.metric("Assenze",absent); c3.metric("Da registrare",int(data["Esito"].isin(["Da segnare"]).sum()) if not data.empty else 0)
+        if data.empty: st.info("Nessun allenamento o gara nel periodo.")
+        else: st.dataframe(data,use_container_width=True,hide_index=True)
+        st.stop()
     acts=q("SELECT * FROM activities WHERE athlete_id=? ORDER BY activity_date DESC",(aid,))
     st.title("La mia dashboard" if page=="La mia dashboard" else "Le mie attività")
     st.metric("Attività registrate",len(acts)); st.dataframe(acts.drop(columns=["data"],errors="ignore"),use_container_width=True); st.stop()
-if page=="Dashboard":
+if page=="Calendario":
+    st.title("Calendario allenamenti, gare e scadenze")
+    st.caption("Crea eventi e assegna ciascun evento agli atleti interessati. Gli atleti vedranno solo gli eventi assegnati al proprio account.")
+    athletes_list=q("SELECT id,first_name,last_name FROM athletes ORDER BY last_name,first_name")
+    with st.expander("＋ Crea nuovo evento",expanded=True):
+        with st.form("calendar_create_form"):
+            kind=st.selectbox("Categoria",["Allenamento","Gara","Pagamento / quota","Visita / test","Riunione","Scadenza","Altro"])
+            title=st.text_input("Titolo / descrizione *")
+            event_day=st.date_input("Data",value=date.today())
+            c1,c2=st.columns(2)
+            start=c1.time_input("Ora inizio",value=datetime.strptime("17:00","%H:%M").time())
+            end=c2.time_input("Ora fine",value=datetime.strptime("18:30","%H:%M").time())
+            location=st.text_input("Luogo")
+            amount=st.number_input("Importo da pagare (€)",min_value=0.0,step=5.0)
+            notes=st.text_area("Dettagli, scadenze o istruzioni")
+            chosen_athletes=st.multiselect("Assegna agli atleti",athletes_list.id.tolist(),format_func=lambda i: str(athletes_list[athletes_list.id==i].iloc[0].first_name)+" "+str(athletes_list[athletes_list.id==i].iloc[0].last_name))
+            save_event=st.form_submit_button("Aggiungi al calendario",use_container_width=True)
+        if save_event:
+            is_training=kind in ["Allenamento","Gara"]
+            if not title.strip(): st.error("Il titolo è obbligatorio.")
+            elif not chosen_athletes: st.error("Seleziona almeno un atleta.")
+            elif is_training and end<=start: st.error("L'ora di fine deve essere successiva all'inizio.")
+            else:
+                with db() as conn:
+                    cur=conn.execute("INSERT INTO training_events(title,event_type,event_date,start_time,end_time,location,notes,amount,created_by) VALUES(?,?,?,?,?,?,?,?,?)",(title.strip(),kind,event_day.isoformat(),start.strftime("%H:%M") if is_training else None,end.strftime("%H:%M") if is_training else None,location.strip(),notes.strip(),amount if amount>0 else None,user["id"]))
+                    status="Da segnare" if is_training else "N/A"
+                    conn.executemany("INSERT INTO event_attendance(event_id,athlete_id,status) VALUES(?,?,?)",[(cur.lastrowid,int(aid),status) for aid in chosen_athletes])
+                st.success("Evento creato e assegnato agli atleti.")
+                st.rerun()
+    events=q("SELECT e.*,COUNT(a.athlete_id) AS assegnati FROM training_events e LEFT JOIN event_attendance a ON a.event_id=e.id GROUP BY e.id ORDER BY e.event_date,e.start_time")
+    st.subheader("Eventi in calendario")
+    view=st.radio("Visualizzazione",["Giorno","Settimana","Mese","Anno"],horizontal=True,key="coach_calendar_view")
+    ref=st.date_input("Data di riferimento",value=date.today(),key="coach_calendar_ref")
+    if view=="Giorno": first=last=ref
+    elif view=="Settimana": first=ref-timedelta(days=ref.weekday()); last=first+timedelta(days=6)
+    elif view=="Mese": first=ref.replace(day=1); last=(first+timedelta(days=32)).replace(day=1)-timedelta(days=1)
+    else: first=date(ref.year,1,1); last=date(ref.year,12,31)
+    if events.empty: st.info("Il calendario è vuoto.")
+    else:
+        events["event_date"]=pd.to_datetime(events["event_date"],errors="coerce").dt.date
+        visible=events[(events["event_date"]>=first)&(events["event_date"]<=last)]
+        if visible.empty: st.info("Nessun evento nel periodo selezionato.")
+        for day,group in visible.groupby("event_date",sort=True):
+            st.markdown("#### "+day.strftime("%A %d/%m/%Y"))
+            for _,ev in group.iterrows():
+                with st.container(border=True):
+                    st.markdown("**"+str(ev["event_type"])+" · "+str(ev["title"])+"**")
+                    if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
+                    if ev["location"]: st.write("Luogo: "+str(ev["location"]))
+                    if pd.notna(ev["amount"]) and ev["amount"] is not None: st.write("Importo: € "+format(float(ev["amount"]),".2f"))
+                    st.caption(str(int(ev["assegnati"]))+" atleti assegnati")
+                    if ev["notes"]: st.write(str(ev["notes"]))
+        if not events.empty:
+            with st.expander("Gestisci o elimina un evento"):
+                selected=st.selectbox("Evento",events.id.tolist(),format_func=lambda i: str(events[events.id==i].iloc[0].event_date)+" · "+str(events[events.id==i].iloc[0].title))
+                if st.button("Elimina evento selezionato",type="secondary"):
+                    with db() as conn:
+                        conn.execute("DELETE FROM event_attendance WHERE event_id=?",(selected,))
+                        conn.execute("DELETE FROM training_events WHERE id=?",(selected,))
+                    st.success("Evento eliminato."); st.rerun()
+elif page=="Registro presenze":
+    st.title("Registro presenze e assenze")
+    st.caption("La modifica è consentita fino alle 14:00 (ora italiana) del giorno dell'allenamento o della gara. Dopo tale orario il registro è bloccato.")
+    period=st.radio("Visualizzazione",["Settimana","Mese","Anno"],horizontal=True,key="coach_att_period")
+    ref=st.date_input("Data di riferimento",value=date.today(),key="coach_att_ref")
+    if period=="Settimana":
+        first=ref-timedelta(days=ref.weekday()); last=first+timedelta(days=6)
+    elif period=="Mese":
+        first=ref.replace(day=1); last=(first+timedelta(days=32)).replace(day=1)-timedelta(days=1)
+    else:
+        first=date(ref.year,1,1); last=date(ref.year,12,31)
+    st.caption("Periodo: "+first.strftime("%d/%m/%Y")+" – "+last.strftime("%d/%m/%Y"))
+    events=q("SELECT id,event_date,start_time,title,event_type FROM training_events WHERE event_type IN ('Allenamento','Gara') AND event_date BETWEEN ? AND ? ORDER BY event_date,start_time",(first.isoformat(),last.isoformat()))
+    if events.empty: st.info("Nessun allenamento o gara nel periodo selezionato.")
+    else:
+        selected=st.selectbox("Seleziona allenamento / gara",events.id.tolist(),format_func=lambda i: str(events[events.id==i].iloc[0].event_date)+" · "+str(events[events.id==i].iloc[0].title))
+        event_row=events[events.id==selected].iloc[0]
+        event_date_value=date.fromisoformat(str(event_row.event_date))
+        cutoff=datetime.combine(event_date_value,datetime.strptime("14:00","%H:%M").time(),tzinfo=ZoneInfo("Europe/Rome"))
+        now=datetime.now(ZoneInfo("Europe/Rome"))
+        can_edit=now<=cutoff
+        if not can_edit: st.warning("Orario limite superato: questo appuntamento non può più essere modificato.")
+        roster=q("SELECT a.id,a.first_name,a.last_name,e.status FROM event_attendance e JOIN athletes a ON a.id=e.athlete_id WHERE e.event_id=? ORDER BY a.last_name,a.first_name",(selected,))
+        if roster.empty: st.info("Nessun atleta è stato assegnato a questo evento.")
+        else:
+            with st.form("attendance_mark_form"):
+                values={}
+                options=["Da segnare","Presente","Assente","In ritardo","Giustificato"]
+                for _,ath in roster.iterrows():
+                    c1,c2=st.columns([2,2])
+                    c1.write(str(ath["first_name"])+" "+str(ath["last_name"]))
+                    current=ath["status"] if ath["status"] in options else "Da segnare"
+                    values[int(ath["id"])]=c2.selectbox("Stato",options,index=options.index(current),key="attendance_"+str(selected)+"_"+str(ath["id"]),disabled=not can_edit)
+                save=st.form_submit_button("Salva presenze e assenze",disabled=not can_edit,use_container_width=True)
+            if save and can_edit:
+                with db() as conn:
+                    for athlete_id,status in values.items():
+                        conn.execute("UPDATE event_attendance SET status=? WHERE event_id=? AND athlete_id=?",(status,selected,athlete_id))
+                st.success("Registro presenze aggiornato."); st.rerun()
+    totals=q("SELECT a.id,a.first_name||' '||a.last_name AS Atleta, SUM(CASE WHEN ea.status IN ('Presente','In ritardo') THEN 1 ELSE 0 END) AS Presenze, SUM(CASE WHEN ea.status IN ('Assente','Giustificato') THEN 1 ELSE 0 END) AS Assenze, SUM(CASE WHEN ea.status='Da segnare' THEN 1 ELSE 0 END) AS Da_segnare FROM athletes a LEFT JOIN event_attendance ea ON ea.athlete_id=a.id LEFT JOIN training_events te ON te.id=ea.event_id AND te.event_type IN ('Allenamento','Gara') AND te.event_date BETWEEN ? AND ? GROUP BY a.id ORDER BY a.last_name,a.first_name",(first.isoformat(),last.isoformat()))
+    # Escludi eventi fuori periodo dai totali, mantenendo anche gli atleti a zero.
+    totals=q("SELECT a.id,a.first_name||' '||a.last_name AS Atleta, SUM(CASE WHEN ea.status IN ('Presente','In ritardo') THEN 1 ELSE 0 END) AS Presenze, SUM(CASE WHEN ea.status IN ('Assente','Giustificato') THEN 1 ELSE 0 END) AS Assenze, SUM(CASE WHEN ea.status='Da segnare' THEN 1 ELSE 0 END) AS Da_segnare FROM athletes a LEFT JOIN event_attendance ea ON ea.athlete_id=a.id LEFT JOIN training_events te ON te.id=ea.event_id WHERE te.event_type IN ('Allenamento','Gara') AND te.event_date BETWEEN ? AND ? GROUP BY a.id ORDER BY a.last_name,a.first_name",(first.isoformat(),last.isoformat()))
+    st.subheader("Totali del periodo per atleta")
+    if totals.empty:
+        st.info("Nessuna presenza o assenza registrata nel periodo.")
+    else:
+        st.dataframe(totals.drop(columns=["id"]),use_container_width=True,hide_index=True)
+        p=int(totals["Presenze"].sum()); a=int(totals["Assenze"].sum())
+        x,y=st.columns(2); x.metric("Presenze totali",p); y.metric("Assenze totali",a)
+elif page=="Dashboard":
     aa=q("SELECT * FROM athletes"); acts=q("SELECT a.*,t.first_name||' '||t.last_name atleta FROM activities a JOIN athletes t ON t.id=a.athlete_id")
     st.title("Dashboard allenatore"); x,y,z=st.columns(3); x.metric("Atleti",len(aa)); y.metric("Attività",len(acts)); z.metric("Sport",aa.sport.nunique() if len(aa) else 0)
     st.dataframe(acts.drop(columns=["data"],errors="ignore"),use_container_width=True)
