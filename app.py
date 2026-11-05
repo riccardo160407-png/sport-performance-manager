@@ -159,10 +159,17 @@ if "user" not in st.session_state:
                 cp=st.text_input("Password",type="password")
                 coach_login=st.form_submit_button("Accedi come allenatore",use_container_width=True)
             if coach_login:
-                row=users[(users.username==cu.strip().lower()) & (users.role=="coach")]
+                row=users[users.username.astype(str).str.strip().str.casefold()==cu.strip().casefold()]
                 if len(row) and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
-                    st.session_state.user=row.iloc[0].to_dict(); st.rerun()
-                else: st.error("Credenziali allenatore non valide.")
+                    account=row.iloc[0].to_dict()
+                    # Compatibilità con gli account allenatore creati nelle versioni precedenti.
+                    if str(account.get("role","")).strip().lower() in ("athlete","atleta"):
+                        st.error("Questo è un account atleta: accedi dalla scheda Atleta.")
+                    else:
+                        account["role"]="coach"
+                        st.session_state.user=account
+                        st.rerun()
+                else: st.error("Credenziali allenatore non valide. Controlla username e password oppure verifica che il database precedente sia ancora disponibile.")
         with signup_col:
             st.markdown("**Iscriviti**")
             with st.form("coach_signup"):
