@@ -1,5 +1,7 @@
 import streamlit as st
-import sqlite3, hashlib, secrets, io, json
+import sqlite3, hashlib, secrets, io, json, smtplib, re
+from email.message import EmailMessage
+from datetime import datetime, timedelta
 from datetime import date
 import pandas as pd
 import plotly.express as px
@@ -10,12 +12,25 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 
 st.set_page_config(page_title="SPORT PERFORMANCE MANAGER", page_icon="🏅", layout="wide")
+st.markdown("""
+<style>
+.stApp{background:linear-gradient(135deg,#F7FBFF,#EAF3FC);color:#17324D}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#123B66,#1976D2)}
+[data-testid="stSidebar"] *{color:white!important}
+h1,h2,h3{color:#123B66}
+.stButton>button,.stDownloadButton>button{background:#1976D2;color:white;border:0;border-radius:10px;font-weight:600}
+.stButton>button:hover{background:#125A9C;color:white}
+[data-testid="stMetric"]{background:white;border:1px solid #D6E6F5;padding:14px;border-radius:14px}
+div[data-testid="stForm"]{background:white;border:1px solid #D6E6F5;padding:16px;border-radius:14px}
+</style>
+""",unsafe_allow_html=True)
 DB="sport_performance.db"
 
 def db():
     c=sqlite3.connect(DB); c.row_factory=sqlite3.Row
     c.executescript("""
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0, email TEXT);
+    CREATE TABLE IF NOT EXISTS coach_verifications(email TEXT PRIMARY KEY, username TEXT NOT NULL, pwd TEXT NOT NULL, salt TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS athletes(id INTEGER PRIMARY KEY, first_name TEXT,last_name TEXT,birth TEXT,sex TEXT,weight REAL,height REAL,sport TEXT,team TEXT,hrmax REAL,hrrest REAL,ftp REAL,notes TEXT);
     CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,athlete_id INTEGER,filename TEXT,sport TEXT,activity_date TEXT,duration REAL,distance REAL,avg_hr REAL,max_hr REAL,avg_power REAL,max_power REAL,avg_speed REAL,cadence REAL,elevation REAL,data TEXT);
     CREATE TABLE IF NOT EXISTS garmin_connections(id INTEGER PRIMARY KEY,athlete_id INTEGER UNIQUE,status TEXT DEFAULT 'pending_consent',consent_at TEXT,last_sync TEXT,external_user_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -23,8 +38,22 @@ def db():
     """)
     try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
+    try: c.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    except sqlite3.OperationalError: pass
     return c
 def pw_hash(p,s): return hashlib.pbkdf2_hmac("sha256",p.encode(),s.encode(),200000).hex()
+def send_coach_code(to_email, code):
+    cfg=st.secrets.get("smtp", {})
+    required=("host","port","username","password","from_email")
+    if not all(cfg.get(k) for k in required):
+        raise RuntimeError("Invio email non configurato: imposta [smtp] nei Secrets di Streamlit.")
+    msg=EmailMessage()
+    msg["Subject"]="Codice di verifica · Sport Performance Manager"
+    msg["From"]=cfg["from_email"]; msg["To"]=to_email
+    msg.set_content(f"Il codice di verifica è {code}. Scade tra 10 minuti.")
+    with smtplib.SMTP(cfg["host"],int(cfg["port"]),timeout=20) as server:
+        server.starttls(); server.login(cfg["username"],cfg["password"]); server.send_message(msg)
+
 def q(sql,args=()): 
     with db() as c: return pd.read_sql_query(sql,c,params=args)
 def parse(f):
@@ -147,59 +176,71 @@ db().close()
 users=q("SELECT * FROM users")
 if "user" not in st.session_state:
     st.title("🏅 SPORT PERFORMANCE MANAGER")
-    st.caption("Il tuo portale per allenamenti, atleti e performance")
+    st.caption("Allenamento, dati e performance in un unico spazio")
     coach_tab, athlete_tab = st.tabs(["👨‍🏫 Allenatore","🏃 Atleta"])
     with coach_tab:
         st.subheader("Area allenatore")
         login_col, signup_col = st.columns(2)
         with login_col:
-            st.markdown("**Accedi**")
+            st.markdown("#### Accedi")
             with st.form("coach_login"):
                 cu=st.text_input("Username allenatore")
                 cp=st.text_input("Password",type="password")
-                coach_login=st.form_submit_button("Accedi come allenatore",use_container_width=True)
+                coach_login=st.form_submit_button("Accedi",use_container_width=True)
             if coach_login:
                 row=users[users.username.astype(str).str.strip().str.casefold()==cu.strip().casefold()]
-                if len(row) and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
-                    account=row.iloc[0].to_dict()
-                    # Compatibilità con gli account allenatore creati nelle versioni precedenti.
-                    if str(account.get("role","")).strip().lower() in ("athlete","atleta"):
-                        st.error("Questo è un account atleta: accedi dalla scheda Atleta.")
-                    else:
-                        account["role"]="coach"
-                        st.session_state.user=account
-                        st.rerun()
-                else: st.error("Credenziali allenatore non valide. Controlla username e password oppure verifica che il database precedente sia ancora disponibile.")
+                if len(row) and str(row.iloc[0].role).lower() not in ("athlete","atleta") and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
+                    st.session_state.user=row.iloc[0].to_dict(); st.rerun()
+                else: st.error("Credenziali non valide. Verifica username e password.")
         with signup_col:
-            st.markdown("**Iscriviti**")
+            st.markdown("#### Registrazione allenatore")
             with st.form("coach_signup"):
-                nu=st.text_input("Crea username")
-                np=st.text_input("Crea password (almeno 12 caratteri)",type="password")
+                nu=st.text_input("Username")
+                em=st.text_input("Email")
+                np=st.text_input("Password (almeno 12 caratteri)",type="password")
                 np2=st.text_input("Conferma password",type="password")
-                coach_signup=st.form_submit_button("Crea account allenatore",use_container_width=True)
-            if coach_signup:
-                if not nu.strip() or len(np)<12 or np!=np2:
-                    st.error("Inserisci uno username e due password uguali di almeno 12 caratteri.")
+                send_code=st.form_submit_button("Invia codice email",use_container_width=True)
+            if send_code:
+                if not nu.strip() or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+",em.strip()) or len(np)<12 or np!=np2:
+                    st.error("Inserisci username, email valida e due password uguali di almeno 12 caratteri.")
+                elif users.username.astype(str).str.casefold().eq(nu.strip().casefold()).any():
+                    st.error("Username già utilizzato.")
                 else:
-                    salt=secrets.token_hex(16)
                     try:
+                        code=f"{secrets.randbelow(1000000):06d}"; salt=secrets.token_hex(16)
+                        send_coach_code(em.strip().lower(),code)
                         with db() as conn:
-                            conn.execute("INSERT INTO users(username,pwd,salt,role,athlete_id,must_change_password) VALUES(?,?,?,?,?,0)",(nu.strip().lower(),pw_hash(np,salt),salt,"coach",None))
-                        st.success("Account allenatore creato. Ora puoi accedere.")
-                    except sqlite3.IntegrityError:
-                        st.error("Username già utilizzato. Scegline un altro.")
+                            conn.execute("INSERT OR REPLACE INTO coach_verifications(email,username,pwd,salt,code_hash,expires_at) VALUES(?,?,?,?,?,?)",(em.strip().lower(),nu.strip().lower(),pw_hash(np,salt),salt,pw_hash(code,"spm-email-code"),(datetime.utcnow()+timedelta(minutes=10)).isoformat()))
+                        st.session_state.pending_coach_email=em.strip().lower()
+                        st.success("Codice inviato. Controlla la posta e lo spam.")
+                    except Exception as e: st.error(f"Invio non riuscito: {e}")
+            if st.session_state.get("pending_coach_email"):
+                with st.form("coach_verify"):
+                    entered=st.text_input("Codice ricevuto",max_chars=6)
+                    verify=st.form_submit_button("Verifica email e crea account")
+                if verify:
+                    with db() as conn:
+                        pending=conn.execute("SELECT * FROM coach_verifications WHERE email=?",(st.session_state.pending_coach_email,)).fetchone()
+                        if pending and datetime.fromisoformat(pending["expires_at"])>datetime.utcnow() and secrets.compare_digest(pw_hash(entered,"spm-email-code"),pending["code_hash"]):
+                            try:
+                                conn.execute("INSERT INTO users(username,pwd,salt,role,athlete_id,must_change_password,email) VALUES(?,?,?,'coach',NULL,0,?)",(pending["username"],pending["pwd"],pending["salt"],pending["email"]))
+                                conn.execute("DELETE FROM coach_verifications WHERE email=?",(pending["email"],))
+                                st.session_state.pop("pending_coach_email",None)
+                                st.success("Email verificata e account creato. Ora puoi accedere.")
+                            except sqlite3.IntegrityError: st.error("Username già utilizzato.")
+                        else: st.error("Codice errato o scaduto. Richiedine uno nuovo.")
     with athlete_tab:
         st.subheader("Area atleta")
-        st.info("L'allenatore crea il tuo profilo e ti consegna username e password provvisoria. Al primo accesso dovrai scegliere una password personale.")
+        st.info("L'allenatore crea il profilo e consegna le credenziali temporanee. Al primo accesso la password va cambiata.")
         with st.form("athlete_login"):
-            au=st.text_input("Username atleta (nome.cognome)")
-            ap=st.text_input("Password provvisoria o personale",type="password")
+            au=st.text_input("Username atleta")
+            ap=st.text_input("Password",type="password")
             athlete_login=st.form_submit_button("Accedi come atleta",use_container_width=True)
         if athlete_login:
             row=users[(users.username==au.strip().lower()) & (users.role=="athlete")]
             if len(row) and secrets.compare_digest(pw_hash(ap,row.iloc[0].salt),row.iloc[0].pwd):
                 st.session_state.user=row.iloc[0].to_dict(); st.rerun()
-            else: st.error("Credenziali atleta non valide. Chiedi all'allenatore di verificare il tuo account.")
+            else: st.error("Credenziali atleta non valide.")
     st.stop()
 user=st.session_state.user
 if int(user.get("must_change_password") or 0)==1:
