@@ -4,8 +4,10 @@ from datetime import date
 import pandas as pd
 import plotly.express as px
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
 
 st.set_page_config(page_title="SPORT PERFORMANCE MANAGER", page_icon="🏅", layout="wide")
 DB="sport_performance.db"
@@ -60,6 +62,78 @@ def stats(d):
     elevation=float(d.altitude.diff().clip(lower=0).sum()) if "altitude" in d else None
     dt=str(d.timestamp.min().date()) if "timestamp" in d and d.timestamp.notna().any() else str(date.today())
     return [dt,duration,distance,m("heart_rate"),mx("heart_rate"),m("power"),mx("power"),m("speed"),m("cadence"),elevation]
+def ftp_analysis(d, protocol, weight):
+    if "power" not in d or d["power"].notna().sum() < 30:
+        return {"error":"Il file non contiene abbastanza campioni di potenza validi."}
+    p = pd.to_numeric(d["power"], errors="coerce").dropna().clip(lower=0)
+    if "timestamp" in d and d["timestamp"].notna().sum() > 30:
+        z = d[["timestamp","power"]].dropna().sort_values("timestamp").drop_duplicates("timestamp").set_index("timestamp")
+        z = z.resample("1s").mean().interpolate(limit=5)
+        p = z["power"].dropna()
+    else:
+        p = p.reset_index(drop=True)
+    if len(p) < 30:
+        return {"error":"Campioni insufficienti dopo la pulizia dei dati."}
+    windows = {}
+    for seconds in [5,15,30,60,300,600,1200,1800,3600]:
+        if len(p) >= seconds:
+            windows[seconds] = float(p.rolling(seconds).mean().max())
+    mean_power = float(p.mean())
+    max_power = float(p.max())
+    ftp = None
+    if protocol == "20 minuti (stima 95%)":
+        ftp = windows.get(1200) * 0.95 if windows.get(1200) is not None else None
+        method = "95% della migliore media su 20 minuti" if ftp else "Test troppo breve: servono almeno 20 minuti"
+    elif protocol == "60 minuti":
+        ftp = windows.get(3600)
+        method = "Migliore media su 60 minuti" if ftp else "Servono almeno 60 minuti di dati"
+    elif protocol == "FTP inserito manualmente":
+        method = "FTP manuale: inserire il valore verificato nel profilo atleta"
+    else:
+        method = "Ramp test: nessuna conversione automatica; serve il protocollo specifico"
+    wkg = ftp / weight if ftp and weight and weight > 0 else None
+    zones = []
+    if ftp:
+        bounds = [("Z1 Recupero",0,.55),("Z2 Resistenza",.56,.75),("Z3 Tempo",.76,.90),("Z4 Soglia",.91,1.05),("Z5 VO2max",1.06,1.20),("Z6 Anaerobica",1.21,1.50),("Z7 Neuromuscolare",1.51,None)]
+        for name, lo, hi in bounds:
+            zones.append((name, round(ftp*lo), round(ftp*hi) if hi else "oltre"))
+    notes = []
+    if ftp:
+        notes.append("FTP stimata: %.0f W%s" % (ftp, (" (%.2f W/kg)" % wkg) if wkg else ""))
+        notes.append("La stima da 20 minuti è un'indicazione e va confermata con un test validato; non equivale a una misura diretta della soglia.")
+    else:
+        notes.append(method + ".")
+    return {"ftp":ftp,"wkg":wkg,"method":method,"mean":mean_power,"peak":max_power,"duration":len(p),"windows":windows,"zones":zones,"notes":notes,"protocol":protocol}
+
+def ftp_pdf(ath, activity, result, weight, comment):
+    b = io.BytesIO()
+    doc = SimpleDocTemplate(b, pagesize=A4, rightMargin=1.6*cm, leftMargin=1.6*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="SmallSPM", parent=styles["BodyText"], fontSize=8, leading=11))
+    story = [Paragraph("SPORT PERFORMANCE MANAGER", styles["Title"]), Paragraph("REPORT TEST FTP · ANALISI DELLA POTENZA", styles["Heading2"]), Spacer(1,8), Paragraph("<b>Atleta:</b> %s &nbsp;&nbsp; <b>Data:</b> %s &nbsp;&nbsp; <b>Peso:</b> %s kg" % (ath, activity[0], weight if weight else "n.d."), styles["BodyText"]), Spacer(1,12)]
+    if result.get("error"):
+        story.append(Paragraph(result["error"], styles["BodyText"]))
+    else:
+        rows = [["Indicatore","Risultato"],["Protocollo",result["protocol"]],["Metodo",result["method"]],["FTP",("%.0f W" % result["ftp"]) if result["ftp"] else "Non stimabile"],["FTP relativa",("%.2f W/kg" % result["wkg"]) if result["wkg"] else "Non disponibile"],["Potenza media","%.0f W" % result["mean"]],["Picco registrato","%.0f W" % result["peak"]],["Durata analizzata","%.1f min" % (result["duration"]/60)]]
+        t = Table(rows, colWidths=[6*cm,10*cm])
+        t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#142B45")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.35,colors.HexColor("#CBD5E1")),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#F1F5F9")]),("PADDING",(0,0),(-1,-1),7)]))
+        story += [t, Spacer(1,12), Paragraph("Profilo di potenza",styles["Heading2"])]
+        rows = [["Durata","Miglior media"]] + [[("%d sec" % s) if s < 60 else ("%d min" % (s//60)), "%.0f W" % v] for s,v in result["windows"].items()]
+        t = Table(rows, colWidths=[6*cm,10*cm])
+        t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#142B45")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.35,colors.HexColor("#CBD5E1")),("PADDING",(0,0),(-1,-1),6)]))
+        story += [t, Spacer(1,12)]
+        if result["zones"]:
+            story.append(Paragraph("Zone di potenza calcolate sulla FTP",styles["Heading2"]))
+            z = Table([["Zona","Intervallo"]] + [[n,"%s–%s W" % (lo,hi)] for n,lo,hi in result["zones"]], colWidths=[8*cm,8*cm])
+            z.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#142B45")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),.35,colors.HexColor("#CBD5E1")),("PADDING",(0,0),(-1,-1),6)]))
+            story += [z, Spacer(1,10)]
+        story.append(Paragraph("Interpretazione e prossimi passi",styles["Heading2"]))
+        for note in result["notes"]:
+            story.append(Paragraph("• " + note, styles["SmallSPM"]))
+    story += [Spacer(1,12), Paragraph("Commento allenatore",styles["Heading2"]), Paragraph(comment or "Nessun commento inserito.",styles["BodyText"]), Spacer(1,8), Paragraph("Nota metodologica: i valori sono calcolati sui campioni presenti nel file. Le finestre non disponibili non vengono stimate. Le zone sono un riferimento operativo da personalizzare.",styles["SmallSPM"])]
+    doc.build(story)
+    return b.getvalue()
+
 def report(ath,activity,comment):
     b=io.BytesIO(); doc=SimpleDocTemplate(b,pagesize=A4); styles=getSampleStyleSheet()
     data=[["Parametro","Valore"],["Data",activity[0]],["Durata (s)",activity[1]],["Distanza (m)",activity[2]],["FC media / max",f"{activity[3]} / {activity[4]}"],["Potenza media / max",f"{activity[5]} / {activity[6]}"],["Velocità media (m/s)",activity[7]],["Cadenza",activity[8]],["Dislivello positivo (m)",activity[9]]]
@@ -136,13 +210,14 @@ elif page=="Carica attività":
     if aa.empty: st.warning("Prima crea un atleta."); st.stop()
     with st.form("upload"):
         aid=st.selectbox("Atleta",aa.id.tolist(),format_func=lambda i:f"{i} · {aa[aa.id==i].iloc[0].first_name} {aa[aa.id==i].iloc[0].last_name}")
-        sport=st.selectbox("Sport",["Ciclismo","Corsa","Pattinaggio","Palestra","Altro"]); f=st.file_uploader("File FIT, TCX, GPX o CSV",type=["fit","tcx","gpx","csv"]); comment=st.text_area("Commento allenatore"); ok=st.form_submit_button("Analizza e salva")
+        sport=st.selectbox("Sport",["Ciclismo","Corsa","Pattinaggio","Palestra","Altro"]); protocol=st.selectbox("Tipo di test potenza",["Non è un test FTP","20 minuti (stima 95%)","60 minuti","Ramp test","FTP inserito manualmente"]); f=st.file_uploader("File FIT, TCX, GPX o CSV",type=["fit","tcx","gpx","csv"]); comment=st.text_area("Commento allenatore"); ok=st.form_submit_button("Analizza e salva")
     if ok:
         try:
             if f is None: raise ValueError("Seleziona un file.")
             d=parse(f); s=stats(d)
             with db() as c: c.execute("INSERT INTO activities(athlete_id,filename,sport,activity_date,duration,distance,avg_hr,max_hr,avg_power,max_power,avg_speed,cadence,elevation,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(aid,f.name,sport,*s,d.to_json(orient="records",date_format="iso")))
-            st.session_state.last={"aid":aid,"filename":f.name,"sport":sport,"stats":s,"df":d,"comment":comment}; st.success("Attività salvata.")
+            athrow=aa[aa.id==aid].iloc[0]; athlete_weight=athrow.weight if pd.notna(athrow.weight) else None
+            st.session_state.last={"aid":aid,"filename":f.name,"sport":sport,"stats":s,"df":d,"comment":comment,"protocol":protocol,"weight":athlete_weight}; st.success("Attività salvata.")
         except Exception as e: st.error("Errore durante la lettura: "+str(e))
     if "last" in st.session_state:
         r=st.session_state.last; s=r["stats"]; d=r["df"]; st.subheader("Analisi")
@@ -150,7 +225,30 @@ elif page=="Carica attività":
         for k in ["heart_rate","power","speed","cadence","altitude"]:
             if k in d and d[k].notna().any(): st.plotly_chart(px.line(d,y=k,title=k),use_container_width=True)
         ath=q("SELECT first_name,last_name FROM athletes WHERE id=?",(r["aid"],)).iloc[0]
-        st.download_button("Scarica report PDF",report(ath.first_name+" "+ath.last_name,r["stats"],r["comment"]),file_name="report_attivita.pdf",mime="application/pdf")
+        if r.get("protocol")!="Non è un test FTP":
+            result=ftp_analysis(d,r["protocol"],r.get("weight"))
+            st.divider(); st.header("Analisi professionale del test FTP")
+            if result.get("error"): st.warning(result["error"])
+            else:
+                a1,a2,a3,a4=st.columns(4)
+                a1.metric("FTP",f'{result["ftp"]:.0f} W' if result["ftp"] else "N/D")
+                a2.metric("FTP relativa",f'{result["wkg"]:.2f} W/kg' if result["wkg"] else "N/D")
+                a3.metric("Potenza media",f'{result["mean"]:.0f} W')
+                a4.metric("Picco",f'{result["peak"]:.0f} W')
+                st.caption(result["method"])
+                if result["windows"]:
+                    pw=pd.DataFrame([{"Durata":f"{s}s" if s<60 else f"{s//60} min","Watt":v} for s,v in result["windows"].items()])
+                    st.plotly_chart(px.line(pw,x="Durata",y="Watt",markers=True,title="Migliore potenza media per durata"),use_container_width=True)
+                    st.dataframe(pw,use_container_width=True,hide_index=True)
+                if result["zones"]:
+                    st.subheader("Zone di potenza")
+                    st.dataframe(pd.DataFrame(result["zones"],columns=["Zona","Da W","A W"]),use_container_width=True,hide_index=True)
+                st.subheader("Valutazione tecnica")
+                for note in result["notes"]: st.write("• "+note)
+            pdf=ftp_pdf(ath.first_name+" "+ath.last_name,r["stats"],result,r.get("weight"),r["comment"])
+            st.download_button("Scarica report FTP professionale (PDF)",pdf,file_name="report_test_FTP.pdf",mime="application/pdf")
+        else:
+            st.download_button("Scarica report PDF",report(ath.first_name+" "+ath.last_name,r["stats"],r["comment"]),file_name="report_attivita.pdf",mime="application/pdf")
 elif page=="Archivio":
     st.title("Archivio attività"); d=q("SELECT a.*,t.first_name||' '||t.last_name atleta FROM activities a JOIN athletes t ON t.id=a.athlete_id ORDER BY activity_date DESC"); st.dataframe(d.drop(columns=["data"],errors="ignore"),use_container_width=True)
 elif page=="Confronti":
