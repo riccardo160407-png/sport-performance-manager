@@ -18,6 +18,8 @@ def db():
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER);
     CREATE TABLE IF NOT EXISTS athletes(id INTEGER PRIMARY KEY, first_name TEXT,last_name TEXT,birth TEXT,sex TEXT,weight REAL,height REAL,sport TEXT,team TEXT,hrmax REAL,hrrest REAL,ftp REAL,notes TEXT);
     CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY,athlete_id INTEGER,filename TEXT,sport TEXT,activity_date TEXT,duration REAL,distance REAL,avg_hr REAL,max_hr REAL,avg_power REAL,max_power REAL,avg_speed REAL,cadence REAL,elevation REAL,data TEXT);
+    CREATE TABLE IF NOT EXISTS garmin_connections(id INTEGER PRIMARY KEY,athlete_id INTEGER UNIQUE,status TEXT DEFAULT 'pending_consent',consent_at TEXT,last_sync TEXT,external_user_id TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS garmin_sync_events(id INTEGER PRIMARY KEY,athlete_id INTEGER,event_key TEXT UNIQUE,received_at TEXT DEFAULT CURRENT_TIMESTAMP,status TEXT,payload TEXT);
     """)
     return c
 def pw_hash(p,s): return hashlib.pbkdf2_hmac("sha256",p.encode(),s.encode(),200000).hex()
@@ -165,7 +167,7 @@ user=st.session_state.user
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
-    menu=["Dashboard","Atleti","Carica attività","Archivio","Confronti","Backup"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività"]
+    menu=["Dashboard","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività"]
     page=st.radio("Menu",menu)
 if user["role"]=="athlete":
     aid=user["athlete_id"]
@@ -249,6 +251,25 @@ elif page=="Carica attività":
             st.download_button("Scarica report FTP professionale (PDF)",pdf,file_name="report_test_FTP.pdf",mime="application/pdf")
         else:
             st.download_button("Scarica report PDF",report(ath.first_name+" "+ath.last_name,r["stats"],r["comment"]),file_name="report_attivita.pdf",mime="application/pdf")
+elif page=="Garmin Connect":
+    st.title("Garmin Connect")
+    st.caption("Sincronizzazione centralizzata delle attività degli atleti")
+    st.info("Questa sezione prepara il portale alla connessione ufficiale Garmin. La sincronizzazione automatica non è ancora attiva: occorre prima ottenere l'accesso Business alle API Garmin e configurare il servizio server-to-server.")
+    st.subheader("Stato collegamenti atleti")
+    aa=q("SELECT id,first_name,last_name,sport FROM athletes ORDER BY last_name")
+    conns=q("SELECT athlete_id,status,consent_at,last_sync FROM garmin_connections")
+    if aa.empty:
+        st.warning("Aggiungi prima gli atleti nella sezione Atleti.")
+    else:
+        view=aa.merge(conns,on="id",how="left",left_on="id",right_on="athlete_id")
+        view["Connessione Garmin"]=view["status"].fillna("Da collegare").replace({"pending_consent":"In attesa del consenso","connected":"Collegato","error":"Da verificare"})
+        view["Ultima sincronizzazione"]=view["last_sync"].fillna("Mai")
+        st.dataframe(view[["first_name","last_name","sport","Connessione Garmin","Ultima sincronizzazione"]].rename(columns={"first_name":"Nome","last_name":"Cognome","sport":"Sport"}),use_container_width=True,hide_index=True)
+    st.subheader("Come funzionerà")
+    st.markdown("1. L'atleta riceve un invito personale e autorizza il collegamento Garmin Connect.\n2. Quando sincronizza orologio o dispositivo, Garmin invia al portale la nuova attività.\n3. Il portale importa il file FIT, evita duplicati e aggiorna automaticamente il diario dell'atleta.\n4. Dashboard e analisi mostrano carico, durata, distanza, frequenza cardiaca, potenza, cadenza e altri campi realmente presenti nel file.")
+    st.warning("Non inserire password Garmin o token in questa pagina. Le credenziali API dovranno essere conservate in segreti server-side, mai nel database in chiaro o nel repository.")
+    st.markdown("**Vincolo attuale:** Garmin distingue l'API personale (solo dati del proprietario) dall'accesso Business multiutente. L'API Activity con file FIT è disponibile tramite il programma Business; l'accesso e le condizioni devono essere confermati da Garmin prima di attivare i collegamenti.")
+    st.markdown("[Documentazione ufficiale Garmin Connect Developer Program](https://developer.garmin.com/gc-developer-program/)")
 elif page=="Archivio":
     st.title("Archivio attività"); d=q("SELECT a.*,t.first_name||' '||t.last_name atleta FROM activities a JOIN athletes t ON t.id=a.athlete_id ORDER BY activity_date DESC"); st.dataframe(d.drop(columns=["data"],errors="ignore"),use_container_width=True)
 elif page=="Confronti":
