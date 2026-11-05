@@ -249,7 +249,7 @@ if "user" not in st.session_state:
                 np2=st.text_input("Conferma password",type="password")
                 send_code=st.form_submit_button("Invia codice email",use_container_width=True)
             if send_code:
-                if not nu.strip() or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+",em.strip()) or len(np)<12 or np!=np2:
+                if not nu.strip() or "@" not in em.strip() or "." not in em.strip().split("@")[-1] or any(ch.isspace() for ch in em.strip()) or len(np)<12 or np!=np2:
                     st.error("Inserisci username, email valida e due password uguali di almeno 12 caratteri.")
                 elif users.username.astype(str).str.casefold().eq(nu.strip().casefold()).any():
                     st.error("Username già utilizzato.")
