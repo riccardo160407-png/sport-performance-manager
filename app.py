@@ -461,7 +461,21 @@ if user["role"]=="athlete":
                         elif status=="In ritardo": st.warning("Presenza registrata · in ritardo")
                         elif status=="Giustificato": st.info("Assenza giustificata")
                         else: st.caption("Presenza non ancora registrata")
-                    if ev["notes"]: st.write(str(ev["notes"]))
+                        if selected_day==date.today():
+                            now=datetime.now(ZoneInfo("Europe/Rome"))
+                            cutoff=datetime.combine(selected_day,datetime.strptime("14:00","%H:%M").time(),tzinfo=ZoneInfo("Europe/Rome"))
+                            if now<=cutoff:
+                                with st.form("athlete_today_attendance_"+str(ev["id"])):
+                                    current=status if status in ["Presente","Assente"] else "Presente"
+                                    choice=st.radio("Presenza",["Presente","Assente"],horizontal=True,index=["Presente","Assente"].index(current))
+                                    confirm=st.form_submit_button("Conferma")
+                                if confirm:
+                                    with db() as conn:
+                                        conn.execute("UPDATE event_attendance SET status=? WHERE event_id=? AND athlete_id=?",(choice,int(ev["id"]),aid))
+                                    st.success("Conferma salvata."); st.rerun()
+                            else:
+                                st.warning("Conferma chiusa: il limite è alle 14:00.")
+                    if ev["notes"]: st.info(str(ev["notes"]))
             with st.expander("Tutti i miei eventi"):
                 st.dataframe(events.drop(columns=["id","created_by"],errors="ignore"),use_container_width=True,hide_index=True)
         st.stop()
