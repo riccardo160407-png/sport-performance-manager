@@ -108,16 +108,38 @@ def db():
     return c
 def pw_hash(p,s): return hashlib.pbkdf2_hmac("sha256",p.encode(),s.encode(),200000).hex()
 def send_coach_code(to_email, code):
+    """Invia codici a qualunque dominio usando il server SMTP configurato dal proprietario."""
     cfg=st.secrets.get("smtp", {})
-    required=("host","port","username","password","from_email")
+    required=("host","port","from_email")
     if not all(cfg.get(k) for k in required):
-        raise RuntimeError("Invio email non configurato: imposta [smtp] nei Secrets di Streamlit.")
+        raise RuntimeError("Configurazione email incompleta: servono host, port e from_email nella sezione [smtp] dei Secrets.")
+    host=str(cfg["host"]).strip()
+    port=int(cfg["port"])
+    security=str(cfg.get("security","starttls")).strip().lower()
+    username=str(cfg.get("username","")).strip()
+    password=str(cfg.get("password",""))
     msg=EmailMessage()
     msg["Subject"]="Codice di verifica · Sport Performance Manager"
-    msg["From"]=cfg["from_email"]; msg["To"]=to_email
-    msg.set_content(f"Il codice di verifica è {code}. Scade tra 10 minuti.")
-    with smtplib.SMTP(cfg["host"],int(cfg["port"]),timeout=20) as server:
-        server.starttls(); server.login(cfg["username"],cfg["password"]); server.send_message(msg)
+    msg["From"]=str(cfg["from_email"]).strip()
+    msg["To"]=to_email
+    msg.set_content(f"Il tuo codice di verifica è {code}. Scade tra 10 minuti. Se non hai richiesto questa registrazione, ignora il messaggio.")
+    timeout=int(cfg.get("timeout",30))
+    if security=="ssl" or port==465:
+        with smtplib.SMTP_SSL(host,port,timeout=timeout) as server:
+            if username:
+                server.login(username,password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(host,port,timeout=timeout) as server:
+            server.ehlo()
+            if security=="starttls":
+                server.starttls()
+                server.ehlo()
+            elif security!="none":
+                raise RuntimeError("Valore smtp.security non valido: usa starttls, ssl oppure none.")
+            if username:
+                server.login(username,password)
+            server.send_message(msg)
 
 def render_profile_email(user):
     st.markdown("### Verifica della nuova email")
