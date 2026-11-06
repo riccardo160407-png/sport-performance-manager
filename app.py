@@ -17,69 +17,76 @@ st.markdown("""
 <style>
 :root { color-scheme: light; }
 html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stMain"] {
-  background:#F7FAFF !important; color:#101828 !important;
+  background:#F8FAFC !important; color:#111827 !important;
 }
-[data-testid="stHeader"] { background:#F7FAFF !important; }
-[data-testid="stMain"] * { color:#101828; }
-h1,h2,h3,h4,h5,h6,p,label,.stMarkdown,[data-testid="stCaptionContainer"] { color:#101828 !important; }
-h1 { color:#102A43 !important; font-weight:800 !important; letter-spacing:-.7px; }
-h2,h3 { color:#0759C7 !important; font-weight:750 !important; }
+[data-testid="stHeader"] { background:#F8FAFC !important; }
+[data-testid="stMain"] * { color:#111827; }
+h1,h2,h3,h4,h5,h6,p,label,.stMarkdown,[data-testid="stCaptionContainer"] { color:#111827 !important; }
+h1,h2,h3 { color:#111827 !important; font-weight:800 !important; }
 [data-testid="stSidebar"] {
-  background:linear-gradient(180deg,#1264D8 0%,#168BFA 100%) !important;
-  border-right:1px solid #24496B; padding-top:1rem;
+  background:linear-gradient(180deg,#16A34A 0%,#4ADE80 100%) !important;
+  border-right:1px solid #86EFAC; padding-top:1rem;
 }
-[data-testid="stSidebar"] * { color:#FFFFFF !important; }
+[data-testid="stSidebar"] * { color:#111827 !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] > label {
-  color:#BFD7F2 !important; font-size:.78rem; font-weight:800;
+  color:#14532D !important; font-size:.78rem; font-weight:800;
   text-transform:uppercase; letter-spacing:1px;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] { gap:7px; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
-  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.10);
+  background:#DCFCE7 !important; border:1px solid #86EFAC !important;
   border-radius:11px; padding:9px 12px; transition:all .15s ease;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-  background:rgba(255,255,255,.15); border-color:#69A7FF;
+  background:#BBF7D0 !important; border-color:#22C55E !important;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-  background:#1677FF; border:1px solid #8AB4FF; box-shadow:0 3px 12px rgba(0,0,0,.18);
+  background:#FEF08A !important; border:2px solid #EAB308 !important; box-shadow:0 2px 8px rgba(0,0,0,.10);
 }
 [data-testid="stSidebar"] button {
-  background:#2585E8 !important; border:1px solid #70B7FF !important;
+  background:#22C55E !important; color:#111827 !important; border:1px solid #15803D !important;
   border-radius:10px !important;
 }
 .stButton > button,.stDownloadButton > button,button[kind="primary"],[data-testid="stFormSubmitButton"] button {
-  background:#155EEF !important; color:#FFFFFF !important; border:1px solid #155EEF !important;
+  background:#22C55E !important; color:#111827 !important; border:1px solid #15803D !important;
   border-radius:10px !important; font-weight:700 !important; min-height:2.65rem;
 }
 .stButton > button:hover,.stDownloadButton > button:hover {
-  background:#123B66 !important; border-color:#123B66 !important; color:#FFFFFF !important;
+  background:#86EFAC !important; border-color:#16A34A !important; color:#111827 !important;
 }
 [data-testid="stMetric"] {
-  background:#FFFFFF !important; border:1px solid #D7E3F0 !important;
+  background:#FFFFFF !important; border:1px solid #D1D5DB !important;
   padding:16px !important; border-radius:14px !important;
-  box-shadow:0 4px 14px rgba(16,42,67,.06);
+  box-shadow:0 4px 14px rgba(17,24,39,.05);
 }
-[data-testid="stMetric"] label,[data-testid="stMetric"] [data-testid="stMetricValue"] { color:#102A43 !important; }
+[data-testid="stMetric"] label,[data-testid="stMetric"] [data-testid="stMetricValue"] { color:#111827 !important; }
 div[data-testid="stForm"],[data-testid="stExpander"] {
-  background:#FFFFFF !important; border:1px solid #D7E3F0 !important; border-radius:14px !important;
+  background:#FFFFFF !important; border:1px solid #D1D5DB !important; border-radius:14px !important;
 }
-div[data-testid="stForm"] * { color:#101828 !important; }
+div[data-testid="stForm"] * { color:#111827 !important; }
 input,textarea,[data-baseweb="select"] > div {
-  background:#FFFFFF !important; color:#101828 !important;
-  border:1px solid #AABBD0 !important; border-radius:9px !important;
+  background:#FFFFFF !important; color:#111827 !important;
+  border:1px solid #9CA3AF !important; border-radius:9px !important;
 }
-input::placeholder,textarea::placeholder { color:#667085 !important; opacity:1 !important; }
-[data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid #CBD5E1; }
-[data-baseweb="tab"] { background:#FFF7CC !important; border-radius:9px 9px 0 0 !important; }
-[data-baseweb="tab"] * { color:#102A43 !important; font-weight:700 !important; }
-[data-baseweb="tab"][aria-selected="true"] { background:#155EEF !important; }
-[data-baseweb="tab"][aria-selected="true"] * { color:#FFFFFF !important; }
-[data-testid="stDataFrame"],[data-testid="stTable"] {
-  background:#FFFFFF !important; border:1px solid #D7E3F0; border-radius:12px; overflow:hidden;
+input::placeholder,textarea::placeholder { color:#6B7280 !important; opacity:1 !important; }
+[data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid #D1D5DB; }
+[data-baseweb="tab"] { background:#FEF9C3 !important; border-radius:9px 9px 0 0 !important; }
+[data-baseweb="tab"] * { color:#111827 !important; font-weight:700 !important; }
+[data-baseweb="tab"][aria-selected="true"] { background:#BBF7D0 !important; }
+[data-baseweb="tab"][aria-selected="true"] * { color:#111827 !important; }
+[data-testid="stDataFrame"],[data-testid="stTable"],[data-testid="stDataFrame"] > div {
+  background:#FFFFFF !important; color:#111827 !important; color-scheme:light !important;
+  border:1px solid #D1D5DB !important; border-radius:12px; overflow:hidden;
 }
-[data-testid="stAlert"] { border-radius:12px !important; }
-hr { border-color:#D7E3F0 !important; }
+[data-testid="stAlert"] { border-radius:12px !important; color:#111827 !important; }
+[data-testid="stAlert"] * { color:#111827 !important; }
+[data-testid="stAlert"][kind="info"],[data-testid="stAlert"][kind="warning"] {
+  background:#FEF3C7 !important; border:1px solid #FACC15 !important;
+}
+[data-testid="stAlert"][kind="success"] { background:#DCFCE7 !important; border:1px solid #86EFAC !important; }
+[data-testid="stAlert"][kind="error"] { background:#FEE2E2 !important; border:1px solid #FCA5A5 !important; }
+div[data-baseweb="notification"],[data-testid="stNotification"] { background:#FEF3C7 !important; color:#111827 !important; }
+hr { border-color:#D1D5DB !important; }
 </style>
 """,unsafe_allow_html=True)
 DB="sport_performance.db"
