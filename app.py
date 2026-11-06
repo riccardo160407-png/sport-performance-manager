@@ -105,6 +105,35 @@ def db():
     except sqlite3.OperationalError: pass
     try: c.execute("ALTER TABLE users ADD COLUMN email TEXT")
     except sqlite3.OperationalError: pass
+    c.execute("CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)")
+    seeded=c.execute("SELECT setting_value FROM app_settings WHERE setting_key='weekly_training_seed_v1'").fetchone()
+    if not seeded:
+        today=date.today()
+        target_year=today.year if today.month<=5 else today.year+1
+        end_date=date(target_year,5,31)
+        schedule={
+            0:("Allenamento","Allenamento pattinaggio","18:00","20:00","Pattinodromo","In caso di pioggia: 18:00–19:30 presso Scuola Villa."),
+            1:("Allenamento","Allenamento pattinaggio","18:00","20:00","Pattinodromo",""),
+            2:("Allenamento","Allenamento pattinaggio","19:00","20:00","Pattinodromo",""),
+            3:("Allenamento","Allenamento pattinaggio","18:00","20:00","Pattinodromo",""),
+            4:("Allenamento","Allenamento pattinaggio","18:00","20:00","Pattinodromo","In caso di pioggia: 18:00–19:30 presso Scuola Villa."),
+            5:("Attività","Allenamento libero",None,None,"Libero","Attività libera; non conteggiata come presenza/assenza."),
+            6:("Attività","Riposo / recupero",None,None,"","Riposo oppure recupero di allenamenti persi; non conteggiato come presenza/assenza.")
+        }
+        athletes=c.execute("SELECT id FROM athletes").fetchall()
+        day=today
+        while day<=end_date:
+            typ,title,start_time,end_time,location,notes=schedule[day.weekday()]
+            cur=c.execute("INSERT INTO training_events(title,event_type,event_date,start_time,end_time,location,notes,created_by) VALUES(?,?,?,?,?,?,?,?)",
+                ("[PROGRAMMA] "+title,typ,day.isoformat(),start_time,end_time,location,notes,None))
+            if typ=="Allenamento":
+                c.executemany("INSERT OR IGNORE INTO event_attendance(event_id,athlete_id,status) VALUES(?,?,?)",
+                    [(cur.lastrowid,int(a[0]),"Da segnare") for a in athletes])
+            day+=timedelta(days=1)
+        c.execute("INSERT INTO app_settings(setting_key,setting_value) VALUES('weekly_training_seed_v1',?)",(end_date.isoformat(),))
+    c.execute("""INSERT OR IGNORE INTO event_attendance(event_id,athlete_id,status)
+        SELECT e.id,a.id,'Da segnare' FROM training_events e CROSS JOIN athletes a
+        WHERE e.title LIKE '[PROGRAMMA]%' AND e.event_type='Allenamento' AND e.event_date>=?""",(date.today().isoformat(),))
     return c
 def pw_hash(p,s): return hashlib.pbkdf2_hmac("sha256",p.encode(),s.encode(),200000).hex()
 def send_coach_code(to_email, code):
