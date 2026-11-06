@@ -505,6 +505,14 @@ if user["role"]=="athlete":
                     st.session_state.user["salt"]=salt
                 st.success("Password aggiornata." if new_password else "Nessuna modifica alla password.")
                 st.rerun()
+        st.divider()
+        st.subheader("Garmin Connect")
+        st.caption("Collega il tuo account Garmin per condividere automaticamente le attività con l'allenatore.")
+        st.warning("Collegamento non ancora attivo: il portale non ha ancora le credenziali e l'autorizzazione API ufficiale Garmin. Non inserire qui la password Garmin.")
+        st.markdown("**Come verrà attivato**")
+        st.markdown("1. L'amministratore del portale ottiene l'accesso al Garmin Connect Developer Program.\n2. Vengono configurati sul server gli identificativi e i segreti API, senza salvarli nel profilo atleta.\n3. Comparirà qui il pulsante **Collega Garmin**: autorizzerai Garmin una sola volta.\n4. Dopo ogni sincronizzazione del dispositivo con Garmin Connect, le nuove attività saranno importate nel tuo profilo e visibili all'allenatore.")
+        st.link_button("Apri Garmin Connect Developer Program","https://developer.garmin.com/gc-developer-program/")
+        st.caption("Per un portale con più atleti serve il programma Garmin Business; l'API personale è destinata ai dati del singolo utente e non a un servizio multiutente.")
         st.info("I dati sportivi e anagrafici sono gestiti dall'allenatore.")
         st.stop()
     if page=="Calendario":
