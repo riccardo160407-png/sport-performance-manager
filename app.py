@@ -1,5 +1,5 @@
 import streamlit as st
-import sqlite3, hashlib, secrets, io, json, smtplib, re
+import sqlite3, hashlib, secrets, io, json, smtplib, re, calendar
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 from datetime import date
@@ -23,9 +23,9 @@ html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stMain"] {
 [data-testid="stMain"] * { color:#101828; }
 h1,h2,h3,h4,h5,h6,p,label,.stMarkdown,[data-testid="stCaptionContainer"] { color:#101828 !important; }
 h1 { color:#102A43 !important; font-weight:800 !important; letter-spacing:-.7px; }
-h2,h3 { color:#123B66 !important; font-weight:750 !important; }
+h2,h3 { color:#0759C7 !important; font-weight:750 !important; }
 [data-testid="stSidebar"] {
-  background:linear-gradient(180deg,#0B1F33 0%,#123B66 100%) !important;
+  background:linear-gradient(180deg,#1264D8 0%,#168BFA 100%) !important;
   border-right:1px solid #24496B; padding-top:1rem;
 }
 [data-testid="stSidebar"] * { color:#FFFFFF !important; }
@@ -42,10 +42,10 @@ h2,h3 { color:#123B66 !important; font-weight:750 !important; }
   background:rgba(255,255,255,.15); border-color:#69A7FF;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-  background:#155EEF; border:1px solid #8AB4FF; box-shadow:0 3px 12px rgba(0,0,0,.18);
+  background:#1677FF; border:1px solid #8AB4FF; box-shadow:0 3px 12px rgba(0,0,0,.18);
 }
 [data-testid="stSidebar"] button {
-  background:#173F68 !important; border:1px solid #557A9E !important;
+  background:#2585E8 !important; border:1px solid #70B7FF !important;
   border-radius:10px !important;
 }
 .stButton > button,.stDownloadButton > button,button[kind="primary"],[data-testid="stFormSubmitButton"] button {
@@ -71,7 +71,7 @@ input,textarea,[data-baseweb="select"] > div {
 }
 input::placeholder,textarea::placeholder { color:#667085 !important; opacity:1 !important; }
 [data-baseweb="tab-list"] { gap:8px; border-bottom:1px solid #CBD5E1; }
-[data-baseweb="tab"] { background:#EAF1FA !important; border-radius:9px 9px 0 0 !important; }
+[data-baseweb="tab"] { background:#FFF7CC !important; border-radius:9px 9px 0 0 !important; }
 [data-baseweb="tab"] * { color:#102A43 !important; font-weight:700 !important; }
 [data-baseweb="tab"][aria-selected="true"] { background:#155EEF !important; }
 [data-baseweb="tab"][aria-selected="true"] * { color:#FFFFFF !important; }
@@ -425,7 +425,6 @@ if user["role"]=="athlete":
                     st.markdown("**"+str(ev["event_type"])+" · "+str(ev["title"])+"**")
                     if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
                     if ev["location"]: st.write("Luogo: "+str(ev["location"]))
-                    if pd.notna(ev["amount"]) and ev["amount"] is not None: st.write("Da pagare: € "+format(float(ev["amount"]),".2f"))
                     if ev["event_type"] in ["Allenamento","Gara"]:
                         status=str(ev["presenza"] or "Da segnare")
                         if status=="Assente": st.error("Assenza registrata")
@@ -471,7 +470,6 @@ if page=="Calendario":
             start=c1.time_input("Ora inizio",value=datetime.strptime("17:00","%H:%M").time())
             end=c2.time_input("Ora fine",value=datetime.strptime("18:30","%H:%M").time())
             location=st.text_input("Luogo")
-            amount=st.number_input("Importo da pagare (€)",min_value=0.0,step=5.0)
             notes=st.text_area("Dettagli, scadenze o istruzioni")
             chosen_athletes=st.multiselect("Assegna agli atleti",athletes_list.id.tolist(),format_func=lambda i: str(athletes_list[athletes_list.id==i].iloc[0].first_name)+" "+str(athletes_list[athletes_list.id==i].iloc[0].last_name))
             save_event=st.form_submit_button("Aggiungi al calendario",use_container_width=True)
@@ -482,7 +480,7 @@ if page=="Calendario":
             elif is_training and end<=start: st.error("L'ora di fine deve essere successiva all'inizio.")
             else:
                 with db() as conn:
-                    cur=conn.execute("INSERT INTO training_events(title,event_type,event_date,start_time,end_time,location,notes,amount,created_by) VALUES(?,?,?,?,?,?,?,?,?)",(title.strip(),kind,event_day.isoformat(),start.strftime("%H:%M") if is_training else None,end.strftime("%H:%M") if is_training else None,location.strip(),notes.strip(),amount if amount>0 else None,user["id"]))
+                    cur=conn.execute("INSERT INTO training_events(title,event_type,event_date,start_time,end_time,location,notes,created_by) VALUES(?,?,?,?,?,?,?,?)",(title.strip(),kind,event_day.isoformat(),start.strftime("%H:%M") if is_training else None,end.strftime("%H:%M") if is_training else None,location.strip(),notes.strip(),user["id"]))
                     status="Da segnare" if is_training else "N/A"
                     conn.executemany("INSERT INTO event_attendance(event_id,athlete_id,status) VALUES(?,?,?)",[(cur.lastrowid,int(aid),status) for aid in chosen_athletes])
                 st.success("Evento creato e assegnato agli atleti.")
@@ -507,7 +505,6 @@ if page=="Calendario":
                     st.markdown("**"+str(ev["event_type"])+" · "+str(ev["title"])+"**")
                     if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
                     if ev["location"]: st.write("Luogo: "+str(ev["location"]))
-                    if pd.notna(ev["amount"]) and ev["amount"] is not None: st.write("Importo: € "+format(float(ev["amount"]),".2f"))
                     st.caption(str(int(ev["assegnati"]))+" atleti assegnati")
                     if ev["notes"]: st.write(str(ev["notes"]))
         if not events.empty:
