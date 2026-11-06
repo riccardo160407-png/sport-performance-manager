@@ -97,11 +97,10 @@ def db():
 
     CREATE TABLE IF NOT EXISTS training_events(id INTEGER PRIMARY KEY, title TEXT NOT NULL, event_type TEXT NOT NULL DEFAULT 'Allenamento', event_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, notes TEXT, amount REAL, created_by INTEGER);
     CREATE TABLE IF NOT EXISTS event_attendance(id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL, athlete_id INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'Da segnare', UNIQUE(event_id,athlete_id));
-    try: c.execute("ALTER TABLE training_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'Allenamento'")
-    except sqlite3.OperationalError: pass
-    try: c.execute("ALTER TABLE training_events ADD COLUMN amount REAL")
-    except sqlite3.OperationalError: pass
     """)
+    for statement in ("ALTER TABLE training_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'Allenamento'", "ALTER TABLE training_events ADD COLUMN amount REAL"):
+        try: c.execute(statement)
+        except sqlite3.OperationalError: pass
     try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
     try: c.execute("ALTER TABLE users ADD COLUMN email TEXT")
