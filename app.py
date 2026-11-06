@@ -24,35 +24,35 @@ html, body, [data-testid="stAppViewContainer"], .stApp, [data-testid="stMain"] {
 h1,h2,h3,h4,h5,h6,p,label,.stMarkdown,[data-testid="stCaptionContainer"] { color:#111827 !important; }
 h1,h2,h3 { color:#111827 !important; font-weight:800 !important; }
 [data-testid="stSidebar"] {
-  background:linear-gradient(180deg,#16A34A 0%,#4ADE80 100%) !important;
-  border-right:1px solid #86EFAC; padding-top:1rem;
+  background:linear-gradient(180deg,#0B1F33 0%,#123B66 100%) !important;
+  border-right:1px solid #24496B; padding-top:1rem;
 }
-[data-testid="stSidebar"] * { color:#111827 !important; }
+[data-testid="stSidebar"] * { color:#FFFFFF !important; }
 [data-testid="stSidebar"] [data-testid="stRadio"] > label {
-  color:#14532D !important; font-size:.78rem; font-weight:800;
+  color:#BFD7F2 !important; font-size:.78rem; font-weight:800;
   text-transform:uppercase; letter-spacing:1px;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] { gap:7px; }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label {
-  background:#DCFCE7 !important; border:1px solid #86EFAC !important;
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.10);
   border-radius:11px; padding:9px 12px; transition:all .15s ease;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover {
-  background:#BBF7D0 !important; border-color:#22C55E !important;
+  background:rgba(255,255,255,.15); border-color:#69A7FF;
 }
 [data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-  background:#FEF08A !important; border:2px solid #EAB308 !important; box-shadow:0 2px 8px rgba(0,0,0,.10);
+  background:#155EEF; border:1px solid #8AB4FF; box-shadow:0 3px 12px rgba(0,0,0,.18);
 }
 [data-testid="stSidebar"] button {
-  background:#22C55E !important; color:#111827 !important; border:1px solid #15803D !important;
+  background:#173F68 !important; border:1px solid #557A9E !important;
   border-radius:10px !important;
 }
 .stButton > button,.stDownloadButton > button,button[kind="primary"],[data-testid="stFormSubmitButton"] button {
-  background:#22C55E !important; color:#111827 !important; border:1px solid #15803D !important;
+  background:#155EEF !important; color:#FFFFFF !important; border:1px solid #155EEF !important;
   border-radius:10px !important; font-weight:700 !important; min-height:2.65rem;
 }
 .stButton > button:hover,.stDownloadButton > button:hover {
-  background:#86EFAC !important; border-color:#16A34A !important; color:#111827 !important;
+  background:#123B66 !important; border-color:#123B66 !important; color:#FFFFFF !important;
 }
 [data-testid="stMetric"] {
   background:#FFFFFF !important; border:1px solid #D1D5DB !important;
@@ -78,14 +78,15 @@ input::placeholder,textarea::placeholder { color:#6B7280 !important; opacity:1 !
   background:#FFFFFF !important; color:#111827 !important; color-scheme:light !important;
   border:1px solid #D1D5DB !important; border-radius:12px; overflow:hidden;
 }
-[data-testid="stAlert"] { border-radius:12px !important; color:#111827 !important; }
-[data-testid="stAlert"] * { color:#111827 !important; }
-[data-testid="stAlert"][kind="info"],[data-testid="stAlert"][kind="warning"] {
-  background:#FEF3C7 !important; border:1px solid #FACC15 !important;
+/* Riquadri informativi sotto le pagine: giallo chiaro e testo nero */
+[data-testid="stAlert"], .stAlert, div[role="alert"], [data-baseweb="notification"] {
+  background:#FEF3C7 !important; background-color:#FEF3C7 !important;
+  color:#111827 !important; border:1px solid #FACC15 !important;
+  border-radius:12px !important; box-shadow:none !important;
 }
-[data-testid="stAlert"][kind="success"] { background:#DCFCE7 !important; border:1px solid #86EFAC !important; }
-[data-testid="stAlert"][kind="error"] { background:#FEE2E2 !important; border:1px solid #FCA5A5 !important; }
-div[data-baseweb="notification"],[data-testid="stNotification"] { background:#FEF3C7 !important; color:#111827 !important; }
+[data-testid="stAlert"] *, .stAlert *, div[role="alert"] *, [data-baseweb="notification"] * {
+  color:#111827 !important; background-color:transparent !important;
+}
 hr { border-color:#D1D5DB !important; }
 </style>
 """,unsafe_allow_html=True)
