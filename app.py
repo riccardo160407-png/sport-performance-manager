@@ -64,6 +64,34 @@ div[data-testid="stForm"],[data-testid="stExpander"] {
   background:#FFFFFF !important; border:1px solid #D1D5DB !important; border-radius:14px !important;
 }
 div[data-testid="stForm"] * { color:#111827 !important; }
+
+/* Controlli centrali: blu chiaro e testo nero */
+[data-testid="stExpander"] details,[data-testid="stExpander"] summary,
+[data-testid="stForm"],[data-testid="stDateInput"] > div,[data-testid="stTimeInput"] > div,
+[data-baseweb="select"] > div,[data-baseweb="input"] > div,[data-baseweb="textarea"] > div {
+  background:#DCEBFA !important; background-color:#DCEBFA !important;
+  color:#111827 !important; border-color:#8FB6E3 !important;
+}
+[data-testid="stExpander"] summary *,[data-baseweb="select"] *,
+[data-testid="stDateInput"] *,[data-testid="stTimeInput"] *,
+[data-baseweb="input"] *,[data-baseweb="textarea"] * { color:#111827 !important; }
+[data-baseweb="select"] svg,[data-testid="stDateInput"] svg,[data-testid="stTimeInput"] svg {
+  fill:#111827 !important; color:#111827 !important;
+}
+[data-baseweb="popover"],[data-baseweb="menu"],[role="listbox"],[role="option"] {
+  background:#FFFFFF !important; color:#111827 !important;
+}
+[role="option"]:hover,[aria-selected="true"] { background:#DCEBFA !important; color:#111827 !important; }
+/* Presente/assente ben distinguibili */
+[data-testid="stRadio"] div[role="radiogroup"] { gap:10px !important; }
+[data-testid="stRadio"] div[role="radiogroup"] label {
+  background:#DCEBFA !important; color:#111827 !important;
+  border:1px solid #8FB6E3 !important; border-radius:10px !important; padding:8px 16px !important;
+}
+[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+  background:#BBD7F4 !important; border:2px solid #3978B9 !important;
+}
+
 input,textarea,[data-baseweb="select"] > div {
   background:#FFFFFF !important; color:#111827 !important;
   border:1px solid #9CA3AF !important; border-radius:9px !important;
@@ -561,8 +589,11 @@ if page=="Calendario":
                 todays=events[events["event_date"].astype(str)==day.isoformat()]
                 details=[]
                 for _,ev in todays.iterrows():
-                    details.append("<div style=\"font-size:11px;background:#FFF7CC;border-left:3px solid #1677FF;padding:4px;margin-top:3px;border-radius:4px\">"+str(ev["event_type"])+"<br>"+str(ev["title"])[:22]+"</div>")
-                bg="#DBEAFE" if day==date.today() else "#FFFFFF"
+                    if day.weekday()==6:
+                        details.append("<div style=\"font-size:11px;background:#DCFCE7;border-left:3px solid #16A34A;padding:4px;margin-top:3px;border-radius:4px;color:#14532D\">"+str(ev["event_type"])+"<br>"+str(ev["title"])[:22]+"</div>")
+                    else:
+                        details.append("<div style=\"font-size:11px;background:#DCEBFA;border-left:3px solid #3978B9;padding:4px;margin-top:3px;border-radius:4px;color:#111827\">"+str(ev["event_type"])+"<br>"+str(ev["title"])[:22]+"</div>")
+                bg="#DCFCE7" if day.weekday()==6 else ("#DBEAFE" if day==date.today() else "#FFFFFF")
                 st.markdown("<div style=\"min-height:105px;border:1px solid #CBD5E1;border-radius:9px;padding:5px;background:"+bg+"\"><b>"+str(daynum)+"</b>"+"".join(details)+"</div>",unsafe_allow_html=True)
     st.subheader("Eventi del mese")
     if events.empty: st.info("Nessun evento nel mese selezionato.")
