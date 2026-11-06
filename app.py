@@ -487,28 +487,43 @@ if page=="Calendario":
                 st.rerun()
     events=q("SELECT e.*,COUNT(a.athlete_id) AS assegnati FROM training_events e LEFT JOIN event_attendance a ON a.event_id=e.id GROUP BY e.id ORDER BY e.event_date,e.start_time")
     st.subheader("Eventi in calendario")
-    view=st.radio("Visualizzazione",["Giorno","Settimana","Mese","Anno"],horizontal=True,key="coach_calendar_view")
-    ref=st.date_input("Data di riferimento",value=date.today(),key="coach_calendar_ref")
-    if view=="Giorno": first=last=ref
-    elif view=="Settimana": first=ref-timedelta(days=ref.weekday()); last=first+timedelta(days=6)
-    elif view=="Mese": first=ref.replace(day=1); last=(first+timedelta(days=32)).replace(day=1)-timedelta(days=1)
-    else: first=date(ref.year,1,1); last=date(ref.year,12,31)
-    if events.empty: st.info("Il calendario è vuoto.")
+    if "coach_cal_month" not in st.session_state: st.session_state.coach_cal_month=date.today().replace(day=1)
+    month=st.session_state.coach_cal_month
+    prev_col,month_col,next_col=st.columns([1,3,1])
+    if prev_col.button("← Mese precedente",key="coach_month_prev"):
+        st.session_state.coach_cal_month=(month-timedelta(days=1)).replace(day=1); st.rerun()
+    month_col.markdown("### "+month.strftime("%B %Y").capitalize())
+    if next_col.button("Mese successivo →",key="coach_month_next"):
+        st.session_state.coach_cal_month=(month.replace(day=28)+timedelta(days=4)).replace(day=1); st.rerun()
+    last_day=(month.replace(day=28)+timedelta(days=4)).replace(day=1)-timedelta(days=1)
+    events=q("SELECT e.*,COUNT(a.athlete_id) AS assegnati FROM training_events e LEFT JOIN event_attendance a ON a.event_id=e.id WHERE e.event_date BETWEEN ? AND ? GROUP BY e.id ORDER BY e.event_date,e.start_time",(month.isoformat(),last_day.isoformat()))
+    headers=st.columns(7)
+    for col,label in zip(headers,["Lun","Mar","Mer","Gio","Ven","Sab","Dom"]): col.markdown("**"+label+"**")
+    for week in calendar.monthcalendar(month.year,month.month):
+        cols=st.columns(7)
+        for col,daynum in zip(cols,week):
+            with col:
+                if not daynum:
+                    st.markdown("<div style=\"height:105px\"></div>",unsafe_allow_html=True)
+                    continue
+                day=date(month.year,month.month,daynum)
+                todays=events[events["event_date"].astype(str)==day.isoformat()]
+                details=[]
+                for _,ev in todays.iterrows():
+                    details.append("<div style=\"font-size:11px;background:#FFF7CC;border-left:3px solid #1677FF;padding:4px;margin-top:3px;border-radius:4px\">"+str(ev["event_type"])+"<br>"+str(ev["title"])[:22]+"</div>")
+                bg="#DBEAFE" if day==date.today() else "#FFFFFF"
+                st.markdown("<div style=\"min-height:105px;border:1px solid #CBD5E1;border-radius:9px;padding:5px;background:"+bg+"\"><b>"+str(daynum)+"</b>"+"".join(details)+"</div>",unsafe_allow_html=True)
+    st.subheader("Eventi del mese")
+    if events.empty: st.info("Nessun evento nel mese selezionato.")
     else:
-        events["event_date"]=pd.to_datetime(events["event_date"],errors="coerce").dt.date
-        visible=events[(events["event_date"]>=first)&(events["event_date"]<=last)]
-        if visible.empty: st.info("Nessun evento nel periodo selezionato.")
-        for day,group in visible.groupby("event_date",sort=True):
-            st.markdown("#### "+day.strftime("%A %d/%m/%Y"))
-            for _,ev in group.iterrows():
-                with st.container(border=True):
-                    st.markdown("**"+str(ev["event_type"])+" · "+str(ev["title"])+"**")
-                    if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
-                    if ev["location"]: st.write("Luogo: "+str(ev["location"]))
-                    st.caption(str(int(ev["assegnati"]))+" atleti assegnati")
-                    if ev["notes"]: st.write(str(ev["notes"]))
-        if not events.empty:
-            with st.expander("Gestisci o elimina un evento"):
+        for _,ev in events.iterrows():
+            with st.container(border=True):
+                st.markdown("**"+str(ev["event_date"])+" · "+str(ev["event_type"])+" · "+str(ev["title"])+"**")
+                if ev["start_time"]: st.write(str(ev["start_time"])+" – "+str(ev["end_time"] or ""))
+                if ev["location"]: st.write("Luogo: "+str(ev["location"]))
+                st.caption(str(int(ev["assegnati"]))+" atleti assegnati")
+                if ev["notes"]: st.write(str(ev["notes"]))
+    with st.expander("Gestisci o elimina un evento"):
                 selected=st.selectbox("Evento",events.id.tolist(),format_func=lambda i: str(events[events.id==i].iloc[0].event_date)+" · "+str(events[events.id==i].iloc[0].title))
                 if st.button("Elimina evento selezionato",type="secondary"):
                     with db() as conn:
