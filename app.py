@@ -123,7 +123,7 @@ DB="sport_performance.db"
 def db():
     c=sqlite3.connect(DB); c.row_factory=sqlite3.Row
     c.executescript("""
-    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0, email TEXT);
+    CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, username TEXT UNIQUE, pwd TEXT, salt TEXT, role TEXT, athlete_id INTEGER, must_change_password INTEGER DEFAULT 0, email TEXT, is_active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS coach_verifications(email TEXT PRIMARY KEY, username TEXT NOT NULL, pwd TEXT NOT NULL, salt TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS pending_email_changes(user_id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS athletes(id INTEGER PRIMARY KEY, first_name TEXT,last_name TEXT,birth TEXT,sex TEXT,weight REAL,height REAL,sport TEXT,team TEXT,hrmax REAL,hrrest REAL,ftp REAL,notes TEXT);
@@ -140,6 +140,8 @@ def db():
     try: c.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
     try: c.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    except sqlite3.OperationalError: pass
+    try: c.execute("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1")
     except sqlite3.OperationalError: pass
     c.execute("CREATE TABLE IF NOT EXISTS app_settings(setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)")
     seeded=c.execute("SELECT setting_value FROM app_settings WHERE setting_key='weekly_training_seed_v1'").fetchone()
@@ -379,9 +381,9 @@ if "user" not in st.session_state:
                 coach_login=st.form_submit_button("Accedi",use_container_width=True)
             if coach_login:
                 row=users[users.username.astype(str).str.strip().str.casefold()==cu.strip().casefold()]
-                if len(row) and str(row.iloc[0].role).lower() not in ("athlete","atleta") and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
+                if len(row) and int(row.iloc[0].get("is_active",1) or 0)==1 and str(row.iloc[0].role).lower() not in ("athlete","atleta") and secrets.compare_digest(pw_hash(cp,row.iloc[0].salt),row.iloc[0].pwd):
                     st.session_state.user=row.iloc[0].to_dict(); st.rerun()
-                else: st.error("Credenziali non valide. Verifica username e password.")
+                else: st.error("Credenziali non valide oppure account disattivato. Verifica con l'allenatore.")
         with signup_col:
             st.markdown("#### Crea account allenatore")
             with st.form("coach_signup"):
@@ -410,9 +412,9 @@ if "user" not in st.session_state:
             athlete_login=st.form_submit_button("Accedi come atleta",use_container_width=True)
         if athlete_login:
             row=users[(users.username==au.strip().lower()) & (users.role=="athlete")]
-            if len(row) and secrets.compare_digest(pw_hash(ap,row.iloc[0].salt),row.iloc[0].pwd):
+            if len(row) and int(row.iloc[0].get("is_active",1) or 0)==1 and secrets.compare_digest(pw_hash(ap,row.iloc[0].salt),row.iloc[0].pwd):
                 st.session_state.user=row.iloc[0].to_dict(); st.rerun()
-            else: st.error("Credenziali atleta non valide.")
+            else: st.error("Credenziali atleta non valide oppure account disattivato. Contatta l'allenatore.")
     st.stop()
 user=st.session_state.user
 if int(user.get("must_change_password") or 0)==1:
@@ -438,12 +440,43 @@ if int(user.get("must_change_password") or 0)==1:
 with st.sidebar:
     st.title("🏅 SPM"); st.caption(user["username"]+" · "+user["role"])
     if st.button("Esci"): del st.session_state.user; st.rerun()
-    menu=["Dashboard","Calendario","Registro presenze","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup","Profilo"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività","Calendario","Registro presenze","Profilo"]
+    menu=["Dashboard","Calendario","Registro presenze","Riepilogo mensile","Atleti","Carica attività","Garmin Connect","Archivio","Confronti","Backup","Profilo"] if user["role"]=="coach" else ["La mia dashboard","Le mie attività","Carica attività","Calendario","Registro presenze","Profilo"]
     page=st.radio("NAVIGAZIONE",menu)
 if user["role"]=="athlete":
     aid=user["athlete_id"]
     a=q("SELECT * FROM athletes WHERE id=?",(aid,))
     if a.empty: st.error("Profilo non associato."); st.stop()
+    if page=="Carica attività":
+        st.title("Carica la tua attività")
+        st.caption("Carica un file esportato da Zwift o da un altro dispositivo. Il report PDF viene preparato subito dopo il salvataggio.")
+        with st.form("athlete_activity_upload"):
+            sport=st.selectbox("Sport",["Ciclismo","Corsa","Pattinaggio","Palestra","Altro"])
+            fup=st.file_uploader("File attività FIT, TCX, GPX o CSV",type=["fit","tcx","gpx","csv"])
+            comment=st.text_area("Note dell'atleta (facoltative)")
+            submit_activity=st.form_submit_button("Carica, analizza e crea report PDF",use_container_width=True)
+        if submit_activity:
+            try:
+                if fup is None: raise ValueError("Seleziona prima il file dell'attività.")
+                frame=parse(fup)
+                values=stats(frame)
+                if frame.empty: raise ValueError("Il file non contiene campioni leggibili.")
+                with db() as conn:
+                    cur=conn.execute("INSERT INTO activities(athlete_id,filename,sport,activity_date,duration,distance,avg_hr,max_hr,avg_power,max_power,avg_speed,cadence,elevation,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(aid,fup.name,sport,*values,frame.to_json(orient="records",date_format="iso")))
+                    new_activity_id=cur.lastrowid
+                st.session_state["athlete_uploaded_report"]={"activity_id":new_activity_id,"filename":fup.name,"sport":sport,"stats":values,"comment":comment}
+                st.success("Attività caricata e salvata. Il report è pronto qui sotto.")
+            except Exception as exc:
+                st.error("Non sono riuscito a leggere il file: "+str(exc))
+        saved=st.session_state.get("athlete_uploaded_report")
+        if saved:
+            own=q("SELECT id,first_name,last_name,weight FROM athletes WHERE id=?",(aid,)).iloc[0]
+            st.subheader("Analisi dell'attività")
+            labels=["Data","Durata (secondi)","Distanza (metri)","FC media","FC massima","Potenza media","Potenza massima","Velocità media","Cadenza","Dislivello positivo"]
+            st.dataframe(pd.DataFrame({"Indicatore":labels,"Valore":saved["stats"]}),use_container_width=True,hide_index=True)
+            pdf=report(str(own.first_name)+" "+str(own.last_name),saved["stats"],saved["comment"])
+            st.download_button("Scarica il report dell'allenamento in PDF",pdf,file_name="report_"+str(saved["activity_id"])+".pdf",mime="application/pdf",use_container_width=True)
+            st.caption("Il report usa esclusivamente i dati presenti nel file. I campi non disponibili non vengono inventati.")
+        st.stop()
     if page=="Profilo":
         st.title("Il mio profilo")
         athlete=a.iloc[0]
@@ -729,6 +762,26 @@ elif page=="Atleti":
             st.success("Atleta salvato."); st.rerun()
     aa=q("SELECT * FROM athletes ORDER BY last_name"); st.dataframe(aa.drop(columns=["notes"],errors="ignore"),use_container_width=True)
     if len(aa):
+        st.subheader("Account e credenziali degli atleti")
+        accounts=q("SELECT u.id,u.athlete_id,u.username,u.is_active,u.must_change_password,a.first_name,a.last_name FROM users u JOIN athletes a ON a.id=u.athlete_id WHERE u.role='athlete' ORDER BY a.last_name,a.first_name")
+        if not accounts.empty:
+            st.dataframe(accounts[["first_name","last_name","username","is_active","must_change_password"]].rename(columns={"first_name":"Nome","last_name":"Cognome","username":"Username","is_active":"Account attivo","must_change_password":"Cambio password al prossimo accesso"}),use_container_width=True,hide_index=True)
+            with st.expander("Riattiva account o reimposta password"):
+                with st.form("coach_reset_athlete_password"):
+                    uid=st.selectbox("Account atleta",accounts.id.tolist(),format_func=lambda i: str(accounts[accounts.id==i].iloc[0].first_name)+" "+str(accounts[accounts.id==i].iloc[0].last_name)+" · "+str(accounts[accounts.id==i].iloc[0].username))
+                    temp=st.text_input("Nuova password temporanea (almeno 12 caratteri)",type="password")
+                    temp2=st.text_input("Conferma nuova password",type="password")
+                    activate=st.checkbox("Riattiva account")
+                    reset=st.form_submit_button("Salva password e account")
+                if reset:
+                    if len(temp)<12 or temp!=temp2:
+                        st.error("Le password devono coincidere e contenere almeno 12 caratteri.")
+                    else:
+                        salt=secrets.token_hex(16)
+                        with db() as conn:
+                            conn.execute("UPDATE users SET pwd=?,salt=?,must_change_password=1,is_active=? WHERE id=?",(pw_hash(temp,salt),salt,1 if activate else int(accounts[accounts.id==uid].iloc[0].is_active),uid))
+                        st.success("Password reimpostata. Al prossimo accesso l'atleta dovrà sceglierne una personale.")
+                        st.rerun()
         with st.expander("Crea account atleta"):
             with st.form("user"):
                 aid=st.selectbox("Atleta",aa.id.tolist(),format_func=lambda i:f"{i} · {aa[aa.id==i].iloc[0].first_name} {aa[aa.id==i].iloc[0].last_name}")
